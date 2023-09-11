@@ -30,7 +30,7 @@ ipykernel @ file:///C:/b/abs_b4f07tbsyd/croot/ipykernel_1672767104060/work
 ipython @ file:///C:/b/abs_d4_i9p0_36/croot/ipython_1674681439495/work
 jaraco.classes==3.3.0
 jedi @ file:///C:/ci/jedi_1644315428305/work
-jsonschema==4.17.3
+jsonschema==4.19.0
 jupyter_client @ file:///C:/b/abs_b9pns5mx5p/croot/jupyter_client_1671703062216/work
 jupyter_core @ file:///C:/b/abs_84df679bho/croot/jupyter_core_1672332237650/work
 keyring==24.2.0
