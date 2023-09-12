@@ -46,6 +46,12 @@ config = ClientConfig(
 - To instantiate a Cognite `client`, run `client = CogniteClient(config)`. Functionality of Python SDK can now be accessed through this client
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
+## Testing
+The integrity and quality of the data product is tested using several approaches. 
+- A framework for unit testing is found in the folder `tests`
+- User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
+- System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
+
 ## Architecture Design Documentation
 1. **Document Objective**
 - This documentation aims at describing the process of integrating a new time series with a new dataset in CDF, including extraction from Cognite CLEAN, transformations using Cognite Functions in the Python SDK, and contextualization through a CDF resource model
