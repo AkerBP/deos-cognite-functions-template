@@ -18,7 +18,7 @@ cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1635519461629/
 debugpy @ file:///C:/ci_310/debugpy_1642079916595/work
 decorator @ file:///opt/conda/conda-bld/decorator_1643638310831/work
 distlib==0.3.7
-dulwich==0.21.5
+dulwich==0.21.6
 entrypoints @ file:///C:/ci/entrypoints_1649926676279/work
 exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1692026125334/work
 executing @ file:///opt/conda/conda-bld/executing_1646925071911/work
