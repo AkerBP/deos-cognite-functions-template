@@ -46,6 +46,17 @@ config = ClientConfig(
 - To instantiate a Cognite `client`, run `client = CogniteClient(config)`. Functionality of Python SDK can now be accessed through this client
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
+## Testing
+The integrity and quality of the data product is tested using several approaches. 
+- A framework for unit testing is found in the folder `tests`
+- User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
+- System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
+
+## Caveats and potential for improvement
+Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
+- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by, e.g., offering standard priviliges or prefilled forms tailored for particular work domains. For instance, propose a specific read/write access for data scientists satisfying their general work scope, facilitating automated request processing
+- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope. The CDF Operations team needs expansion of their staff.
+
 ## Architecture Design Documentation
 1. **Document Objective**
 - This documentation aims at describing the process of integrating a new time series with a new dataset in CDF, including extraction from Cognite CLEAN, transformations using Cognite Functions in the Python SDK, and contextualization through a CDF resource model
