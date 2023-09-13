@@ -4,7 +4,7 @@ backcall @ file:///home/ktietz/src/ci/backcall_1611930011877/work
 Bottleneck @ file:///C:/Windows/Temp/abs_3198ca53-903d-42fd-87b4-03e6d03a8381yfwsuve8/croots/recipe/bottleneck_1657175565403/work
 build==0.10.0
 CacheControl==0.13.1
-certifi @ file:///C:/b/abs_85o_6fm0se/croot/certifi_1671487778835/work/certifi
+certifi==2023.7.22
 cffi==1.15.1
 charset-normalizer==3.2.0
 cleo==2.0.1
@@ -20,11 +20,13 @@ decorator @ file:///opt/conda/conda-bld/decorator_1643638310831/work
 distlib==0.3.7
 dulwich==0.21.5
 entrypoints @ file:///C:/ci/entrypoints_1649926676279/work
+exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1692026125334/work
 executing @ file:///opt/conda/conda-bld/executing_1646925071911/work
 filelock==3.12.3
 fonttools==4.25.0
 idna==3.4
 importlib-metadata==6.8.0
+iniconfig @ file:///home/conda/feedstock_root/build_artifacts/iniconfig_1673103042956/work
 installer==0.7.0
 ipykernel @ file:///C:/b/abs_b4f07tbsyd/croot/ipykernel_1672767104060/work
 ipython @ file:///C:/b/abs_d4_i9p0_36/croot/ipython_1674681439495/work
@@ -55,6 +57,7 @@ pickleshare @ file:///tmp/build/80754af9/pickleshare_1606932040724/work
 Pillow==9.4.0
 pkginfo==1.9.6
 platformdirs==3.2.0
+pluggy @ file:///home/conda/feedstock_root/build_artifacts/pluggy_1693086607691/work
 ply==3.11
 poetry==1.6.1
 poetry-core==1.7.0
@@ -72,6 +75,7 @@ pyproject_hooks==1.0.0
 PyQt5==5.15.7
 PyQt5-sip @ file:///C:/Windows/Temp/abs_d7gmd2jg8i/croots/recipe/pyqt-split_1659273064801/work/pyqt_sip
 pyrsistent==0.19.3
+pytest @ file:///home/conda/feedstock_root/build_artifacts/pytest_1694128424395/work
 python-dateutil==2.8.2
 pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1680088766131/work
 pywin32==305.1
@@ -86,10 +90,13 @@ shellingham==1.5.3
 sip @ file:///C:/Windows/Temp/abs_b8fxd17m2u/croots/recipe/sip_1659012372737/work
 six==1.16.0
 sortedcontainers==2.4.0
+sphinx
+sphinx-copybutton
+sphinx-rtd-theme
 stack-data @ file:///opt/conda/conda-bld/stack_data_1646927590127/work
 statsmodels @ file:///C:/b/abs_7bth810rna/croot/statsmodels_1689937298619/work
 toml @ file:///home/conda/feedstock_root/build_artifacts/toml_1604308577558/work
-tomli==2.0.1
+tomli @ file:///home/conda/feedstock_root/build_artifacts/tomli_1644342247877/work
 tomlkit==0.12.1
 tornado @ file:///C:/ci/tornado_1662476985533/work
 traitlets==5.9.0
