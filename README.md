@@ -4,6 +4,10 @@ Some tanks on Aker BPs assets are missing draining rate measurements. Draining r
 The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks.
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
 
+The project seeks to demonstrate how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. 
+We use the (deploy-functions-oidc)[https://github.com/cognitedata/deploy-functions-oidc] template as a structure for the project with dynamic scheduling of Cognite Functions. Although the Cognite UI is recommended if setting up and scheduling a single function, as in this project, we make use of the template to demonstrate the flexible workflow of using Cognite Functions. A workflow that facilitates an efficient CI/CD architecture.
+We refer to the (deploy-functions-oidc)[https://github.com/cognitedata/deploy-functions-oidc] template for an explanation of the project structure, and how to use it.
+
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
 ```
