@@ -56,9 +56,10 @@ The integrity and quality of the data product is tested using several approaches
 - User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
 - System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
 
-## Caveats and potential for improvement
+## Improvements for access request system
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
 - The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by, e.g., offering standard priviliges or prefilled forms tailored for particular work domains. For instance, propose a specific read/write access for data scientists satisfying their general work scope, facilitating automated request processing
+- If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed.
 - The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope. The CDF Operations team needs expansion of their staff.
 
 ## Architecture Design Documentation
@@ -102,6 +103,7 @@ Completing all steps in this demonstration, from retrieving the original time se
 - To deploy data to the Cognite Fusion Dev evnironment, we need to submit an access request form for Cognite Data Fusion. Subsection 6a. describes how to fill out this form in order to get the necessary access rights for developing our dataset, and subsection 6b details how to authenticate with a Cognite Client.
   a. ***Read/write access request***
     - The form is found (here)[https://forms.office.com/Pages/ResponsePage.aspx?id=cEF-O0iDpEq_rgaj4YZ0aUVYsXTN0c9Dil0iHGZgj0lUOTBXVFlSWDlMUFk1WUNBS1lKWjZKWko2TyQlQCN0PWcu]
+    - Set a unique *Title of the request* 
     - In *Area of the request* select Cognite Data Fusion (CDF)
     - In *Category* select New access or create new dataset
     - In *New access or create new dataset request* select Create new dataset
