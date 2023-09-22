@@ -12,27 +12,27 @@ The project seeks to demonstrate how one goes by acquiring read/write access for
 git clone https://github.com/vetlenev/opshub-task1.git
 cd opshub-task1
 ```
-2. Create a virtual environment and install dependencies using a conda environment
+2. Create a virtual environment using conda
 ```
 conda create -n myenv
 conda activate myenv
-pip freeze > requirements.txt
 ```
 - The installation includes Cognite's Python SDK `cognite-sdk` (version 6.15.3), used to perform transformations for CDF directly through Python
-- To manage Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
+- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 
-3. Authenticate with Python SDK.
+4. Authentication with Python SDK.
 - First, create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with the Cognite Fusion Prod tenant, which gives you read access to the time series dataset used in this project. All Aker BP accounts and Aker BP guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- Authentication with the Python SDK is done interactively in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
+- To authenticate with the Cognite API we use the `OAuthClientCredentials` credentials provider. Authentication is done in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
 - With these, credentials are provided by
 ```
-credentials = OAuthInteractive(
-    authority_url=f"https://login.microsoftonline.com/{TENANT_ID}",
+credentials = OAuthClientCredentials(
+    token_url=f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token",
     client_id=CLIENT_ID,
+    client_secret=??????????????????????????
     scopes=[f"https://{CDF_CLUSTER}.cognitedata.com/.default"],
 )
 ```
