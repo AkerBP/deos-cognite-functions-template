@@ -30,31 +30,30 @@ pipreqs src
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 
 4. Authentication with Python SDK.
-- First, create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with the Cognite Fusion Prod tenant, which gives you read access to the time series dataset used in this project. All Aker BP accounts and Aker BP guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- To authenticate with the Cognite API we use the `OAuthClientCredentials` credentials provider. Authentication is done in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
+- First, create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
+- To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-- With these, credentials are provided by
+- With these, we can authenticate interactively through our TOKEN (an instance of `SerializableTokenCache`)
 ```
-credentials = OAuthClientCredentials(
-    token_url=f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token",
+app = PublicClientApplication(
     client_id=CLIENT_ID,
-    client_secret=??????????????????????????
-    scopes=[f"https://{CDF_CLUSTER}.cognitedata.com/.default"],
+    authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+    token_cache=TOKEN
 )
 ```
-- The client is configured as follows
+- The client is configured as follows (where `GET_TOKEN` is the access token acquired by the client `app`)
 ```
 config = ClientConfig(
-    client_name="Cognite Academy course taker",
+    client_name="my-client-name",
     project=COGNITE_PROJECT,
-    base_url=f"https://{CDF_CLUSTER}.cognitedata.com",
-    credentials=credentials,
+    credentials=Token(GET_TOKEN),
+    base_url=f"https://{CDF_CLUSTER}.cognitedata.com"
 )
 ```
-- To instantiate a Cognite `client`, run `client = CogniteClient(config)`. Functionality of Python SDK can now be accessed through this client
+- Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `cognite_authentication.py` in the `src` folder
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Testing
