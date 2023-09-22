@@ -17,7 +17,16 @@ cd opshub-task1
 conda create -n myenv
 conda activate myenv
 ```
-- The installation includes Cognite's Python SDK `cognite-sdk` (version 6.15.3), used to perform transformations for CDF directly through Python
+3. Install packages and manage dependencies
+```
+conda install -c conda-forge pandas numpy statsmodels matplotlib cognite-sdk
+```
+- The `cognite-sdk` package is used to perform transformations for CDF directly through Python
+- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder. We use `pipreqs` to ensure consistency of `requirements.txt` with the actual packages used in `handler.py`.
+```
+pip install pipreqs
+pipreqs src
+```
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 
 4. Authentication with Python SDK.
