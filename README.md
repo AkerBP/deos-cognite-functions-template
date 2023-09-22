@@ -22,7 +22,7 @@ conda activate myenv
 conda install -c conda-forge pandas numpy statsmodels matplotlib cognite-sdk
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python
-- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder. We use `pipreqs` to ensure consistency of `requirements.txt` with the actual packages used in `handler.py`.
+- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder. If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file
 ```
 pip install pipreqs
 pipreqs src
