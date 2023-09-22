@@ -29,9 +29,9 @@ pipreqs src
 ```
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 
-4. Authentication with Python SDK.
-- First, create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
+## Authentication with Python SDK.
+- Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
+- To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in `src/initialize.py`. Four parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
@@ -53,7 +53,7 @@ config = ClientConfig(
     base_url=f"https://{CDF_CLUSTER}.cognitedata.com"
 )
 ```
-- Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `cognite_authentication.py` in the `src` folder
+- Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `src/cognite_authentication.py`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Testing
@@ -64,9 +64,9 @@ The integrity and quality of the data product is tested using several approaches
 
 ## Improvements for access request system
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
-- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by, e.g., offering standard priviliges or prefilled forms tailored for particular work domains. For instance, propose a specific read/write access for data scientists satisfying their general work scope, facilitating automated request processing
-- If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed.
-- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope. The CDF Operations team needs expansion of their staff.
+- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
+- If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed
+- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope
 
 ## Architecture Design Documentation
 1. **Document Objective**
