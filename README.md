@@ -1,7 +1,7 @@
 # opshub-task1
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
-The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks.
+The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks using Cognite Functions. The new time series is computed with a granularity of 15 minutes. For this reason, the Cognite Function is set to run on a 15 minute schedule. 
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
 
 The project seeks to demonstrate how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
@@ -22,7 +22,8 @@ conda activate myenv
 conda install -c conda-forge pandas numpy statsmodels matplotlib cognite-sdk python-dotenv
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python
-- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder. If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file
+- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder.
+- *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
 pip install pipreqs
 pipreqs src
