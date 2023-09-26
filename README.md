@@ -59,7 +59,7 @@ config = ClientConfig(
 
 ## Updating time series at prescribed schedules
 The following steps describe how to run our Cognite Function to calculate daily average drainage rate on a prescribed schedule.
-- We first make an instance of our Cognite Function with the Python SDK in `run_functions.ipynb`
+- We first make an instance of our Cognite Function with the Python SDK (run in `run_functions.ipynb`)
 ```
 func_drainage = client.functions.create(
     name="avg-drainage-rate",
