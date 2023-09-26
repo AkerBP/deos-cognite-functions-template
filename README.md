@@ -1,8 +1,10 @@
 # opshub-task1
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
-The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks.
+The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks using Cognite Functions. The new time series is computed with a granularity of 15 minutes. For this reason, the Cognite Function is set to run on a 15 minute schedule. 
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
+
+The project seeks to demonstrate how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
 
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
@@ -10,41 +12,83 @@ The new time series will be published as a new dataset in the Cognite Fusion Pro
 git clone https://github.com/vetlenev/opshub-task1.git
 cd opshub-task1
 ```
-2. Create a virtual environment and install dependencies using a conda environment
+2. Create a virtual environment using conda
 ```
 conda create -n myenv
 conda activate myenv
-pip freeze > requirements.txt
 ```
-- The installation includes Cognite's Python SDK `cognite-sdk` (version 6.15.3), used to perform transformations for CDF directly through Python
-- To manage Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
+3. Install packages and manage dependencies
+```
+conda install -c conda-forge pandas numpy statsmodels matplotlib cognite-sdk python-dotenv
+```
+- The `cognite-sdk` package is used to perform transformations for CDF directly through Python
+- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder.
+- *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
+```
+pip install pipreqs
+pipreqs src
+```
+- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 
-3. Authenticate with Python SDK.
-- First, create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with the Cognite Fusion Prod tenant, which gives you read access to the time series dataset used in this project. All Aker BP accounts and Aker BP guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- Authentication with the Python SDK is done interactively in the Jupyter file `run_functions.ipynb`. Four parameters must be specified:
+## Authentication with Python SDK.
+- Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
+- To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in `src/initialize.py`. Four parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-- With these, credentials are provided by
+- With these, we can authenticate interactively through our TOKEN (an instance of `SerializableTokenCache`)
 ```
-credentials = OAuthInteractive(
-    authority_url=f"https://login.microsoftonline.com/{TENANT_ID}",
+app = PublicClientApplication(
     client_id=CLIENT_ID,
-    scopes=[f"https://{CDF_CLUSTER}.cognitedata.com/.default"],
+    authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+    token_cache=TOKEN
 )
 ```
-- The client is configured as follows
+- The client is configured as follows (where `GET_TOKEN` is the access token acquired by the client `app`)
 ```
 config = ClientConfig(
-    client_name="Cognite Academy course taker",
+    client_name="my-client-name",
     project=COGNITE_PROJECT,
-    base_url=f"https://{CDF_CLUSTER}.cognitedata.com",
-    credentials=credentials,
+    credentials=Token(GET_TOKEN),
+    base_url=f"https://{CDF_CLUSTER}.cognitedata.com"
 )
 ```
-- To instantiate a Cognite `client`, run `client = CogniteClient(config)`. Functionality of Python SDK can now be accessed through this client
+- Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `src/cognite_authentication.py`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
+
+## Updating time series at prescribed schedules
+To run a Cognite Function to calculate daily average drainage rate on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
+```
+func_drainage = client.functions.create(
+    name="avg-drainage-rate",
+    external_id="avg-drainage-rate",
+    folder="."
+)
+```
+- The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder
+- Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. We also supply necessary input data `data_dict` for the function call. The schedule is instantiated by
+```
+func_drainage_schedule = client.functions.schedules.create(
+    name="avg-drainage-rate-schedule",
+    cron_expression="*/15 * * * *", # every 15 min
+    function_id=func_drainage.id, # id of function instance
+    description="Calculation scheduled every hour",
+    data=data_dict
+)
+```
+To update our new time series based on this schedule, *two* time series must be retrieved by the Cognite Function; the original time series `ts_orig` (of volume percentage) and the recently transformed time series `ts_leak` (of daily average drainage rate). 
+```
+ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                               aggregates="average",
+                                               granularity="15m",
+                                               start=start_date,
+                                               end=end_date)
+
+ts_leak = client.time_series.data.retrieve(external_id=ts_leak_extid)
+```
+The time series are uniquely retrieved by their `external_id`. We only aggregate and supply start and end dates for the original signal (based on most recent schedule). This is not necessary for the transformed signal, because it has already been aggregated and we want to retrieve the entire signal
+The reason we retrieve two time series is that we don't want to recalculate the entire signal all over again, but rather only perform calculations on the most recent schedule and *backfill* the calculated signal for the period preceding this schedule. The updated signal is obtained by merging the backfilled signal with the calculated signal from the most recent schedule, as illustrated in the FIGURE BELOW. This procedure is repeated for each new schedule.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. 
@@ -52,10 +96,11 @@ The integrity and quality of the data product is tested using several approaches
 - User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
 - System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
 
-## Caveats and potential for improvement
+## Improvements for access request system
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
-- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by, e.g., offering standard priviliges or prefilled forms tailored for particular work domains. For instance, propose a specific read/write access for data scientists satisfying their general work scope, facilitating automated request processing
-- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope. The CDF Operations team needs expansion of their staff.
+- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
+- If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed
+- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope
 
 ## Architecture Design Documentation
 1. **Document Objective**
@@ -98,6 +143,7 @@ Completing all steps in this demonstration, from retrieving the original time se
 - To deploy data to the Cognite Fusion Dev evnironment, we need to submit an access request form for Cognite Data Fusion. Subsection 6a. describes how to fill out this form in order to get the necessary access rights for developing our dataset, and subsection 6b details how to authenticate with a Cognite Client.
   a. ***Read/write access request***
     - The form is found (here)[https://forms.office.com/Pages/ResponsePage.aspx?id=cEF-O0iDpEq_rgaj4YZ0aUVYsXTN0c9Dil0iHGZgj0lUOTBXVFlSWDlMUFk1WUNBS1lKWjZKWko2TyQlQCN0PWcu]
+    - Set a unique *Title of the request* 
     - In *Area of the request* select Cognite Data Fusion (CDF)
     - In *Category* select New access or create new dataset
     - In *New access or create new dataset request* select Create new dataset
