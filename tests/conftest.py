@@ -11,37 +11,48 @@ In VSCode, Code Coverage is recorded in config.xml. Delete this file to reset re
 from __future__ import annotations
 
 from typing import List
-from src.initialize import initialize_client
 import pandas as pd
 from datetime import datetime, timedelta
 
 import pytest
 from _pytest.nodes import Item
 
+from cognite.client.testing import monkeypatch_cognite_client
+from src.initialize import initialize_client
+
+
+@pytest.fixture
+def cognite_client_mock():
+    with monkeypatch_cognite_client() as client:
+        yield client
+
+
 @pytest.fixture(scope="module")
-def retrieve_timeseries() -> pd.DataFrame:
+def retrieve_timeseries():
     """Retrieve a given CDF time series
 
     Returns:
         pd.DataFrame: time series stored in dataframe
     """
-    client = initialize_client()
-    ts_name = "VAL_11-LT-95034A:X.Value"
+    client = initialize_client(
+        run_sandbox=True, cache_token=True)  # Instantiate sandbox environment
+    ts_name = "PI-70445:X.Value"
 
-    ts_all = client.time_series.search(name=ts_name) # find time series by name
-    cdf_ext_id = ts_all[0].external_id # extract its external id
-    start_date = datetime(2023, 3, 21, 1, 0, 0)
+    ts_elem = client.time_series.list(
+        name=ts_name).to_pandas()
+    cdf_ext_id = ts_elem.external_id[0]  # extract its external id
+    # start_date = datetime(2023, 3, 21, 1, 0, 0)
     df_cdf = client.time_series.data.retrieve(external_id=cdf_ext_id,
-                                        aggregates="average",
-                                        granularity="2m",
-                                        start=start_date,
-                                        end=start_date + timedelta(days=20)) # load time series by external id
+                                              aggregates="average",
+                                              granularity="15m")
 
     df = df_cdf.to_pandas()
-    df = df.rename(columns = {cdf_ext_id + "|average": ts_name})
+    df = df.rename(columns={cdf_ext_id + "|average": ts_name})
 
-    df['time_sec'] = (df.index - datetime(1970,1,1)).total_seconds() # total seconds elapsed of each data point since 1970
+    # total seconds elapsed of each data point since 1970
+    df['time_sec'] = (df.index - datetime(1970, 1, 1)).total_seconds()
     return df, ts_name
+
 
 def pytest_collection_modifyitems(items: list[Item]):
     for item in items:
