@@ -58,8 +58,7 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Updating time series at prescribed schedules
-The following steps describe how to run our Cognite Function to calculate daily average drainage rate on a prescribed schedule.
-- We first make an instance of our Cognite Function with the Python SDK (run in `run_functions.ipynb`)
+To run a Cognite Function to calculate daily average drainage rate on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
 ```
 func_drainage = client.functions.create(
     name="avg-drainage-rate",
@@ -78,7 +77,18 @@ func_drainage_schedule = client.functions.schedules.create(
     data=data_dict
 )
 ```
-To update our new time series based on this schedule, *two* time series must be retrieved by the Cognite Function; the original time series (of volume percentage) and the recently transformed time series (of daily average drainage rate). The reason for this is that we don't want to recalculate the entire signal all over again, but rather only perform calculations on the most recent schedule and backfill the calculated signal for the period preceding this schedule. The updated signal is obtained by merging the backfilled signal with the calculated signal from the most recent schedule, as illustrated in the FIGURE BELOW. This procedure is repeated for each new schedule.
+To update our new time series based on this schedule, *two* time series must be retrieved by the Cognite Function; the original time series `ts_orig` (of volume percentage) and the recently transformed time series `ts_leak` (of daily average drainage rate). 
+```
+ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                               aggregates="average",
+                                               granularity="15m",
+                                               start=start_date,
+                                               end=end_date)
+
+ts_leak = client.time_series.data.retrieve(external_id=ts_leak_extid)
+```
+The time series are uniquely retrieved by their `external_id`. We only aggregate and supply start and end dates for the original signal (based on most recent schedule). This is not necessary for the transformed signal, because it has already been aggregated and we want to retrieve the entire signal
+The reason we retrieve two time series is that we don't want to recalculate the entire signal all over again, but rather only perform calculations on the most recent schedule and *backfill* the calculated signal for the period preceding this schedule. The updated signal is obtained by merging the backfilled signal with the calculated signal from the most recent schedule, as illustrated in the FIGURE BELOW. This procedure is repeated for each new schedule.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. 
