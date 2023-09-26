@@ -57,6 +57,29 @@ config = ClientConfig(
 - Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `src/cognite_authentication.py`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
+## Updating time series at prescribed schedules
+The following steps describe how to run our Cognite Function to calculate daily average drainage rate on a prescribed schedule.
+- We first make an instance of our Cognite Function with the Python SDK in `run_functions.ipynb`
+```
+func_drainage = client.functions.create(
+    name="avg-drainage-rate",
+    external_id="avg-drainage-rate",
+    folder="."
+)
+```
+- The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder
+- Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. We also supply necessary input data `data_dict` for the function call. The schedule is instantiated by
+```
+func_drainage_schedule = client.functions.schedules.create(
+    name="avg-drainage-rate-schedule",
+    cron_expression="*/15 * * * *", # every 15 min
+    function_id=func_drainage.id, # id of function instance
+    description="Calculation scheduled every hour",
+    data=data_dict
+)
+```
+To update our new time series based on this schedule, *two* time series must be retrieved by the Cognite Function; the original time series (of volume percentage) and the recently transformed time series (of daily average drainage rate). The reason for this is that we don't want to recalculate the entire signal all over again, but rather only perform calculations on the most recent schedule and backfill the calculated signal for the period preceding this schedule. The updated signal is obtained by merging the backfilled signal with the calculated signal from the most recent schedule, as illustrated in the FIGURE BELOW. This procedure is repeated for each new schedule.
+
 ## Testing
 The integrity and quality of the data product is tested using several approaches. 
 - A framework for unit testing is found in the folder `tests`
