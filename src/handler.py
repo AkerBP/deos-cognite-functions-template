@@ -31,6 +31,7 @@ def handle(client: CogniteClient, data: dict) -> pd.DataFrame:
         data['tot_days'] = 3
         data['tot_minutes'] = 0
         ts_input_name = "PI-70445:X.Value"
+        # only if new time series already uploaded
         end_date = pd.Timestamp.now() - pd.Timedelta(days=449)
     else:
         ts_input_name = data['ts_input_name']
