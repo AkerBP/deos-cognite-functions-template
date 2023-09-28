@@ -85,17 +85,17 @@ if ts_leak.empty:
         TimeSeries(name=ts_output_name, external_id=ts_output_name, data_set_id=dataset_id)
     )
 ```
-To avoid redundant work, we only query and transform parts of the original time series from the current date. We aggregate the signal with 5 minute averages to avoid potentially large loading times.
+To avoid redundant work, we only query and transform parts of the original time series from the current date. To not put too much pressure on the system, we aggregate the signal with 1 minute averages.
 ```
 end_date = pd.Timestamp.now()
 start_date = pd.to_datetime(end_date.date())
 ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                aggregates="average",
-                                               granularity="5m",
+                                               granularity="1m",
                                                start=start_date,
                                                end=end_date)
 ```
-Daily average drainage rate is calculated from this set and inserted into the transformed time series 
+The units of the calculated daily average drainage rate is thus in [L/min]. The calculations from `start` to `end` are inserted into the transformed time series 
 ```
 client.time_series.data.insert_dataframe(mean_df)
 ```
