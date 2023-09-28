@@ -66,8 +66,8 @@ func_drainage = client.functions.create(
     folder="."
 )
 ```
-- The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder
-- Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. We also supply necessary input data `data_dict` for the function call. The schedule is instantiated by
+The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder.
+Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. We also supply necessary input data `data_dict` for the function call. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
     name="avg-drainage-rate-schedule",
@@ -77,18 +77,29 @@ func_drainage_schedule = client.functions.schedules.create(
     data=data_dict
 )
 ```
-To update our new time series based on this schedule, *two* time series must be retrieved by the Cognite Function; the original time series `ts_orig` (of volume percentage) and the recently transformed time series `ts_leak` (of daily average drainage rate). 
+Firstly, we check if the transformed time series already exists. If not, we create the time series (code snippets from `handler.py`)
 ```
+ts_leak = client.time_series.list(name=ts_output_name).to_pandas()  # transformed time series
+if ts_leak.empty:
+    client.time_series.create(
+        TimeSeries(name=ts_output_name, external_id=ts_output_name, data_set_id=dataset_id)
+    )
+```
+To avoid redundant work, we only query and transform parts of the original time series from the current date. We aggregate the signal with 5 minute averages to avoid potentially large loading times.
+```
+end_date = pd.Timestamp.now()
+start_date = pd.to_datetime(end_date.date())
 ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                aggregates="average",
-                                               granularity="15m",
+                                               granularity="5m",
                                                start=start_date,
                                                end=end_date)
-
-ts_leak = client.time_series.data.retrieve(external_id=ts_leak_extid)
 ```
-The time series are uniquely retrieved by their `external_id`. We only aggregate and supply start and end dates for the original signal (based on most recent schedule). This is not necessary for the transformed signal, because it has already been aggregated and we want to retrieve the entire signal
-The reason we retrieve two time series is that we don't want to recalculate the entire signal all over again, but rather only perform calculations on the most recent schedule and *backfill* the calculated signal for the period preceding this schedule. The updated signal is obtained by merging the backfilled signal with the calculated signal from the most recent schedule, as illustrated in the FIGURE BELOW. This procedure is repeated for each new schedule.
+Daily average drainage rate is calculated from this set and inserted into the transformed time series 
+```
+client.time_series.data.insert_dataframe(mean_df)
+```
+where `mean_df` is a dataframe with calculated daily average leakage from current date.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. 
