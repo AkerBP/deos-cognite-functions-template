@@ -107,6 +107,10 @@ The integrity and quality of the data product is tested using several approaches
 - User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
 - System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
 
+## Presentation in Grafana
+- To facilitate an insightful presentation of the transformed time series, we deploy it to the Grafana appliation. Through an Aker BP tenant, Grafana seamlessly connects to CDF as a source system. Once data is deployed to CDF, an API interface handles the ingestion of data into Grafana.
+- The time series is to be part of a pump health dashboard containing all kind of insightful data of the "health" of a particular pump. The panels of this dashboard serve the relevant data in a visually pleasing way. We generate a new panel for this dashboard that visualizes our transformed time series, along with other data visualizations of the pump, and the data is continuously updated along with new data that enters CDF.
+
 ## Improvements for access request system
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
 - The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
