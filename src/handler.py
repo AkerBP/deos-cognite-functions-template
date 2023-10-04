@@ -33,88 +33,64 @@ def handle(client: CogniteClient, data: dict) -> pd.DataFrame:
         ts_input_name = "PI-70445:X.Value"
         # only if new time series already uploaded
         end_date = pd.Timestamp.now() - pd.Timedelta(days=449)
+        start_date = end_date - \
+            timedelta(days=data['tot_days'], minutes=data['tot_minutes'])
     else:
         ts_input_name = data['ts_input_name']
         end_date = pd.Timestamp.now()
-
-    start_date = end_date - \
-        timedelta(days=data['tot_days'], minutes=data['tot_minutes'])
+        # from the start (00:00:00) of end_date
+        start_date = pd.to_datetime(end_date.date())
 
     ts_output_name = data['ts_output_name']
     dataset_id = data['dataset_id']
 
     # STEP 1: Load time series from name and aggregate
-
     ts_orig = client.time_series.list(
-        name=ts_input_name).to_pandas()  # find time series by name
-    ts_orig_extid = ts_orig.external_id[0]  # extract its external id
+        name=ts_input_name).to_pandas()  # original time series (vol percentage)
+    ts_orig_extid = ts_orig.external_id[0]
 
-    # load NEW time series
-    # already aggregated, and we want full time series, so no start/enddate provided
     ts_leak = client.time_series.list(
-        name=ts_output_name).to_pandas()
-    try:
-        ts_leak_extid = ts_leak.external_id[0]
-        first_update = False
-        ts_leak = client.time_series.data.retrieve(external_id=ts_leak_extid)
-        df_leak = ts_leak.to_pandas()
-        df_leak = df_leak.rename(
-            columns={ts_leak_extid + "|average": ts_input_name})
-        df_leak.index = pd.to_datetime(df_leak.index)  # .dt.date
+        name=ts_output_name).to_pandas()  # transformed time series (leakage)
+    ts_exists = not ts_leak.empty  # Check if transformed time series already exists
 
-        first_update = False
-
-        # load ORIGINAL time series - start and end dates defines most recent schedule
-        ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                   aggregates="average",
-                                                   granularity="15m",
-                                                   start=start_date,
-                                                   end=end_date)
-    except:
-        first_update = True  # time series not found
-        # load ORIGINAL time series - load all data so far (no start/end dates) as this is first time we transform time series
-        end_date = pd.Timestamp.now()
-        if data['run_sandbox']:
-            end_date = end_date - pd.Timedelta(days=452)
-        ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                   aggregates="average",
-                                                   granularity="15m",
-                                                   end=end_date)
+    ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                               aggregates="average",
+                                               granularity="1m",
+                                               start=start_date,
+                                               end=end_date)
 
     df = ts_orig.to_pandas()
     df = df.rename(columns={ts_orig_extid + "|average": ts_input_name})
 
     # STEP 2: Filter signal
-    # total seconds elapsed of each data point since 1970
-    df['time_sec'] = (df.index - datetime(1970, 1, 1)).total_seconds()
+    df['time_sec'] = (df.index - datetime(1970, 1, 1)
+                      ).total_seconds()  # tot seconds since epoch
     vol_perc = df[ts_input_name]
     smooth = lowess(vol_perc, df['time_sec'], is_sorted=True, frac=0.01, it=0)
     df_smooth = pd.DataFrame(smooth, columns=["time_sec", "smooth"])
 
     df.reset_index(inplace=True)
     df = df.rename(columns={'index': 'time_stamp'})
-    # merge smooth signal into origianl dataframe
     df = pd.merge(df, df_smooth, on='time_sec')
     df.set_index('time_stamp', drop=True, append=False,
                  inplace=True, verify_integrity=False)
 
-    # STEP 3: Create new time series
-    if first_update:
+    # STEP 3: Create new time series, if not already exists
+    if not ts_exists:
         # client.time_series.delete(external_id=ts_output_name)
-        ts_output = client.time_series.create(TimeSeries(
+        client.time_series.create(TimeSeries(
             name=ts_output_name, external_id=ts_output_name, data_set_id=dataset_id))
 
-    # STEP 4: Calculate daily average drainage rate
-    # Unit: vol_percentage/time [% of tank vol / sec]
+    # STEP 4: Calculate daily average drainage rate [% of tank vol / sec]
     try:
         df["derivative"] = np.gradient(df['smooth'], df["time_sec"])
     except:
         raise IndexError(
             "No datapoints found for selected date range. Cannot compute drainage rate.")
-    # replace when derivative is greater than alfa
+
     derivative_value_excl = data['derivative_value_excl']
     df['derivative_excl_filling'] = df["derivative"].apply(
-        lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)
+        lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
 
     df.reset_index(inplace=True)
     df['Date'] = pd.to_datetime(df['time_stamp']).dt.date
@@ -122,32 +98,18 @@ def handle(client: CogniteClient, data: dict) -> pd.DataFrame:
 
     mean_drainage_day = df.groupby('Date')['derivative_excl_filling'].mean(
     )*tank_volume/100  # avg drainage rate per DAY
-    # Use external ID as column name
+    # external ID is column name
     mean_df = pd.DataFrame({ts_output_name: mean_drainage_day})
     mean_df.index = pd.to_datetime(mean_df.index)
 
-    # Append previously calculated time series
-    # get last date of previous calculated time series
-    if not first_update:
-        last_date = df_leak.index.max()
-        # only select newly calculated values (avoid duplicates)
-        # mean_df.index = (mean_df.index - datetime(1970, 1, 1)).total_seconds()
-        # mean_df["Date"] = pd.to_datetime(mean_df.index).dt.date
-        df_new = mean_df.loc[mean_df.index > last_date]
-        df_full = pd.concat([df_leak, df_new])
-        # datetime index required for inserting dataframe into time series
-    else:
-        df_full = mean_df  # no merging if first update
-
-    df_full.index = pd.to_datetime(df_full.index)
     new_df = pd.merge(df, mean_df, on="Date")
-
     new_df["draining_rate [L/min]"] = new_df["derivative_excl_filling"] * \
         tank_volume/100  # drainage rate per TIME STAMP
 
-    ts_inserted = client.time_series.data.insert_dataframe(df_full)
+    # insert transformed signal for new time range
+    client.time_series.data.insert_dataframe(mean_df)
 
-    return new_df[[ts_output_name]].to_json()  # , ts_output, ts_inserted
+    return new_df[[ts_output_name]].to_json()  # jsonify output signal
 
 
 if __name__ == '__main__':
@@ -167,12 +129,3 @@ if __name__ == '__main__':
                  'run_sandbox': True, 'dataset_id': 3197476513083188}  # NB: change dataset id when going to dev/test/prod!
 
     new_df = handle(client, data_dict)
-    # # Create function
-    # get_df = client.functions.create(
-    #     name="calc-drainage-rate",
-    #     # external_id="load-time-series",
-    #     function_handle=handle
-    # )
-    # # Call function
-    # func_info = {'function_id': 'calc-drainage-rate'}
-    # call_get_df = get_df.call(data=data_dict, function_call_info=func_info)
