@@ -17,20 +17,25 @@ cd opshub-task1
 conda create -n myenv
 conda activate myenv
 ```
-3. Install packages and manage dependencies
+3. Install packages (conda manages the dependencies)
 ```
 conda install -c conda-forge pandas numpy statsmodels matplotlib cognite-sdk python-dotenv
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python
-- When deploying Cognite Functions, the main entry point `handler.py` must be supported by a `requirements.txt` file located in the same folder.
+- To deploy Cognite Functions, the main entry point, `handler.py`, is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
 pip install pipreqs
 pipreqs src
 ```
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
+4. Deploy and run the Cognite Function
+- The jupyter file `src/run_functions.ipynb is devoted to creating and executing the Cognite Function
+- Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
+- Run the code cells consequtively authenticate with CDF and deploy the Cognite Function at a schedule for given input data
 
 ## Authentication with Python SDK.
+To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using a cached token and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
 - Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
 - To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in `src/initialize.py`. Four parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
@@ -54,11 +59,11 @@ config = ClientConfig(
     base_url=f"https://{CDF_CLUSTER}.cognitedata.com"
 )
 ```
-- Your Cognite client is instantiated by running `client = CogniteClient(config)`. The complete code for authenticating with a cached token is found in `src/cognite_authentication.py`
+- Your Cognite client is instantiated by running `client = CogniteClient(config)`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Updating time series at prescribed schedules
-To run a Cognite Function to calculate daily average drainage rate on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
+This section outlines the procedure we use for writing new data to a time series at a given schedule. To run our Cognite Function on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
 ```
 func_drainage = client.functions.create(
     name="avg-drainage-rate",
@@ -67,7 +72,7 @@ func_drainage = client.functions.create(
 )
 ```
 The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder.
-Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. We also supply necessary input data `data_dict` for the function call. The schedule is instantiated by
+Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
     name="avg-drainage-rate-schedule",
