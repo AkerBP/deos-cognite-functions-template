@@ -19,7 +19,7 @@ conda activate myenv
 ```
 3. Install packages (conda manages the dependencies)
 ```
-conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal
+conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal ipykernel
 pip install cognite-sdk[pandas]
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python. To support integration with `pandas`, we specify this package as a dependency using brackets
