@@ -66,12 +66,7 @@ config = ClientConfig(
 ## Calculation of drainage rate
 This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage. If you are only interested in deployment of Cognite Functions, we recommend jumping to section Update time series at prescribed schedules.
 
-Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. The `frac` parameter specifies how large fraction of the data is used to compute the local fit.  Since our initial write to the dataset spans all historic data, we need to reduce the computational expense. We do this by only choosing a small fraction `frac` of the data used to compute the local fits, and also increase the threshold interval between datapoints, `delta`, for which to use linear regression instead of weighted regression. Along with input data `vol_perc` and `time`, the parameters are as follows.
-```
-smooth = lowess(vol_perc, time, is_sorted=True,
-                frac=0.002, it=0, delta=0.001*len(vol_perc))
-```
-Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to use more of the data to compute the local fit, and also rely entirely on weighted regression. 
+Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, we need to reduce the computational expense. We do this by increasing the threshold interval between datapoints, `delta`, for which to use linear regression instead of weighted regression. In our case we set `delta=5e-4*len(vol_perc)`, where `vol_perc` is a vector containing all historic datapoints of volume percentage. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
 ```
 smooth = lowess(vol_perc, time, is_sorted=True,
                 frac=0.01, it=0, delta=0)
