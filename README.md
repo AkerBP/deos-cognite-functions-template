@@ -20,9 +20,9 @@ conda activate myenv
 3. Install packages (conda manages the dependencies)
 ```
 conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal ipykernel
-pip install cognite-sdk[pandas]
+pip install "cognite-sdk[pandas, numpy]"
 ```
-- The `cognite-sdk` package is used to perform transformations for CDF directly through Python. To support integration with `pandas`, we specify this package as a dependency using brackets
+- The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
 - To deploy Cognite Functions, the main entry point, `handler.py`, is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
