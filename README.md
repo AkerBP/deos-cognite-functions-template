@@ -66,7 +66,22 @@ config = ClientConfig(
 ## Calculation of drainage rate
 This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage. If you are only interested in deployment of Cognite Functions, we recommend jumping to section Update time series at prescribed schedules.
 
-Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform Lowess filtering using the`statsmodels` Python package. It calculates weighted residuals, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, this takes undesirably long time. To reduce computations, we run the lowess function with the following input parameters. 
+Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. The `frac` parameter specifies how large fraction of the data is used to compute the local fit.  Since our initial write to the dataset spans all historic data, we need to reduce the computational expense. We do this by only choosing a small fraction `frac` of the data used to compute the local fits, and also increase the threshold interval between datapoints, `delta`, for which to use linear regression instead of weighted regression. Along with input data `vol_perc` and `time`, the parameters are as follows.
+```
+smooth = lowess(vol_perc, time, is_sorted=True,
+                frac=0.002, it=0, delta=0.001*len(vol_perc))
+```
+Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to use more of the data to compute the local fit, and also rely entirely on weighted regression. 
+```
+smooth = lowess(vol_perc, time, is_sorted=True,
+                frac=0.01, it=0, delta=0)
+```
+
+After filtering, the drainage rate is calculated as the derivative of the volume percentage. For this, we use `numpy`s `gradient` function, operating on the full vector of datapoints.
+```
+drainage_rate = np.gradient(smooth, time)
+```
+To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
 
 ## Updating time series at prescribed schedules
 This section outlines the procedure we use for writing new data to a time series at a given schedule. To run our Cognite Function on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
