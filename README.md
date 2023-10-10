@@ -63,6 +63,11 @@ config = ClientConfig(
 - Your Cognite client is instantiated by running `client = CogniteClient(config)`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
+## Calculation of drainage rate
+This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage. If you are only interested in deployment of Cognite Functions, we recommend jumping to section Update time series at prescribed schedules.
+
+Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform Lowess filtering using the`statsmodels` Python package. It calculates weighted residuals, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, this takes undesirably long time. To reduce computations, we run the lowess function with the following input parameters. 
+
 ## Updating time series at prescribed schedules
 This section outlines the procedure we use for writing new data to a time series at a given schedule. To run our Cognite Function on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
 ```
