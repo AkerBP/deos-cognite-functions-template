@@ -81,20 +81,30 @@ drainage_rate = np.gradient(smooth, time)
 To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK.
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The code snippets are found in `run_functions.ipynb`.
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
 
-The first step is to create an instance of the `handle` function to be deployed to CDF (code snippets from `run_functions.ipynb`)
+### 1. Create file
+To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to the path where your Cognite function is located. The function must be named `handle` and placed in a `handler.py` file.
+```
+folder = os.getcwd().replace("\\", "/")
+function_path = "handler.py"
+
+uploaded = client.files.upload(path=f"{folder}/{function_path}", name=function_path, data_set_id=dataset_id)
+```
+### 2. Deployment
+The next step is to create an instance of the `handle` function to be deployed to CDF.
 ```
 func_drainage = client.functions.create(
     name="avg-drainage-rate",
     external_id="avg-drainage-rate",
-    folder="."
+    file_id=uploaded.id,
 )
 ```
-The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder.
-The next step is to set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
+The `file_id` is assigned the id of the newly created file. 
+### 3. Set up schedule
+Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
     name="avg-drainage-rate-schedule",
