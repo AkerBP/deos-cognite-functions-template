@@ -114,7 +114,8 @@ func_drainage_schedule = client.functions.schedules.create(
     data=data_dict
 )
 ```
-Firstly, we check if the transformed time series already exists. If not, we create the time series (code snippets from `handler.py`)
+## Reading/writing time series
+This section briefly outlines the steps from reading a time series to writing to a new time series. Firstly, we check if the transformed time series already exists. If not, we create the time series (code snippets from `handler.py`)
 ```
 ts_leak = client.time_series.list(name=ts_output_name).to_pandas()  # transformed time series
 if ts_leak.empty:
@@ -122,7 +123,7 @@ if ts_leak.empty:
         TimeSeries(name=ts_output_name, external_id=ts_output_name, data_set_id=dataset_id)
     )
 ```
-To avoid redundant work, we only query and transform parts of the original time series from the current date. To not put too much pressure on the system, we aggregate the signal with 1 minute averages.
+Apart from the initial transformation of all historic datapoints, we only query and transform parts of the original time series from the current date. To not put too much pressure on the system, we aggregate the signal with 1 minute averages.
 ```
 end_date = pd.Timestamp.now()
 start_date = pd.to_datetime(end_date.date())
