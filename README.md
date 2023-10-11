@@ -36,20 +36,22 @@ pipreqs src
 - Run the code cells consequtively authenticate with CDF and deploy the Cognite Function at a schedule for given input data
 
 ## Authentication with Python SDK.
-To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using a cached token and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
+To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
 - Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- To authenticate with the Cognite API we generate a Token as credentials provider, more specifically a `SerializableTokenCache` from the `msal` library. Authentication is done in `src/initialize.py`. Four parameters must be specified:
+- To authenticate with the Cognite API we generate a client credential, more specifically a `OAuthClientCredentials`. Authentication is done in `src/initialize.py`. Five parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-- With these, we can authenticate interactively through our TOKEN (an instance of `SerializableTokenCache`)
+  5. `CLIENT SECRET`: A secret token required for deployement. GIVE MORE INFO ...
+- With these, we can authenticate by fetching our credentials
 ```
-app = PublicClientApplication(
-    client_id=CLIENT_ID,
-    authority=f"https://login.microsoftonline.com/{TENANT_ID}",
-    token_cache=TOKEN
-)
+creds = OAuthClientCredentials(
+          token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
+          client_id=sCLIENT_ID,
+          scopes=SCOPES,
+          client_secret=str(os.getenv("CLIENT_SECRET")),
+      )
 ```
 - The client is configured as follows (where `GET_TOKEN` is the access token acquired by the client `app`)
 ```
@@ -80,6 +82,7 @@ To get the daily average leakage rate, we group the data by date, calculate the 
 
 ## Deployment of Cognite Function and scheduling
 This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK.
+
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 The first step is to create an instance of the `handle` function to be deployed to CDF (code snippets from `run_functions.ipynb`)
