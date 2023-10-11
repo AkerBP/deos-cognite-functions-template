@@ -78,8 +78,11 @@ drainage_rate = np.gradient(smooth, time)
 ```
 To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
 
-## Updating time series at prescribed schedules
-This section outlines the procedure we use for writing new data to a time series at a given schedule. To run our Cognite Function on a prescribed schedule, we first make an instance of this function with the Python SDK (code snippets from `run_functions.ipynb`)
+## Deployment of Cognite Function and scheduling
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK.
+*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
+
+The first step is to create an instance of the `handle` function to be deployed to CDF (code snippets from `run_functions.ipynb`)
 ```
 func_drainage = client.functions.create(
     name="avg-drainage-rate",
@@ -88,7 +91,7 @@ func_drainage = client.functions.create(
 )
 ```
 The `folder` argument must point to the folder where the Cognite Function is located. The function must be named `handle` and placed in a `handler.py` file. Here, the `handler.py` is located in the root folder.
-Next, we generate the schedule that should run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
+The next step is to set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
     name="avg-drainage-rate-schedule",
