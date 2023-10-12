@@ -23,6 +23,8 @@ conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal ipy
 pip install "cognite-sdk[pandas, numpy]"
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
+- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
+4. Specify dependencies in `requirements.txt`
 - To deploy Cognite Functions, the main entry point, `handler.py`, is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
@@ -30,8 +32,7 @@ pip install pipreqs
 pipreqs src
 ```
 - ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
-- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
-4. Deploy and run the Cognite Function
+5. Deploy and run the Cognite Function
 - The jupyter file `src/run_functions.ipynb is devoted to creating and executing the Cognite Function
 - Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
 - Run the code cells consequtively authenticate with CDF and deploy the Cognite Function at a schedule for given input data
