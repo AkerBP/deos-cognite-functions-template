@@ -29,6 +29,7 @@ pip install "cognite-sdk[pandas, numpy]"
 pip install pipreqs
 pipreqs src
 ```
+- ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 4. Deploy and run the Cognite Function
 - The jupyter file `src/run_functions.ipynb is devoted to creating and executing the Cognite Function
@@ -86,10 +87,10 @@ This section outlines the procedure for creating a Cognite function for CDF, dep
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to the path where your Cognite function is located. The function must be named `handle` and placed in a `handler.py` file.
+To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (e.g., `requirements.txt`)
 ```
 folder = os.getcwd().replace("\\", "/")
-function_path = "handler.py"
+function_path = "zip_handler.zip"
 
 uploaded = client.files.upload(path=f"{folder}/{function_path}", name=function_path, data_set_id=dataset_id)
 ```
@@ -102,7 +103,7 @@ func_drainage = client.functions.create(
     file_id=uploaded.id,
 )
 ```
-The `file_id` is assigned the id of the newly created file. 
+The `file_id` is assigned the id of the newly created zip file. 
 ### 3. Set up schedule
 Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
