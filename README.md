@@ -29,7 +29,7 @@ pip install "cognite-sdk[pandas, numpy]"
 pip install pipreqs
 pipreqs src
 ```
-- ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
+- ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 4. Deploy and run the Cognite Function
 - The jupyter file `src/run_functions.ipynb is devoted to creating and executing the Cognite Function
