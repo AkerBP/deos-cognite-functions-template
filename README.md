@@ -42,17 +42,17 @@ To read/write data from/to CDF, we need to connect with the Cognite application.
 - Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
 - To authenticate with the Cognite API we generate a client credential, more specifically a `OAuthClientCredentials`. Authentication is done in `src/initialize.py`. Five parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
-  2. `CLIENT_ID`: ID of the application in Azure AD (here: `779f2b3b-b599-401a-96aa-48bd29132a27`)
+  2. `CLIENT_ID`: ID of the application in Azure AD. This will be unique value available to users that have been granted write access to the dataset. It is found in your "Key vaults > *key_vault_name* > Secrets" service at (Microsoft Azure)[https://portal.azure.com/#home] (reach out to the CDF team if you don't know the exact *key_vault_name*), where the relevant key has suffix ending "-ID"
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-  5. `CLIENT SECRET`: A secret token required for deployement. GIVE MORE INFO ...
+  5. `CLIENT SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at (Microsoft Azure)[https://portal.azure.com/#home] where the relevant key has suffix ending "-SECRET"
 - With these, we can authenticate by fetching our credentials
 ```
 creds = OAuthClientCredentials(
           token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
-          client_id=sCLIENT_ID,
+          client_id=CLIENT_ID,
           scopes=SCOPES,
-          client_secret=str(os.getenv("CLIENT_SECRET")),
+          client_secret=CLIENT_SECRET,
       )
 ```
 - The client is configured as follows (where `GET_TOKEN` is the access token acquired by the client `app`)
