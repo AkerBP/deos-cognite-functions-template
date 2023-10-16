@@ -15,7 +15,10 @@ import numpy as np
 from cognite.client.data_classes import TimeSeries
 
 from src.initialize import initialize_client
+from src.handler import handle
 from tests.utils import create_timeseries, lowess_smoothing, make_dummy_df
+
+# ----- CDF specific tests -----
 
 
 @pytest.mark.unit
@@ -62,34 +65,44 @@ def test_timeseries_insert(cognite_client_mock):
     y = df[ts_name].values
     assert (np.all(vals == y))
 
+# --------------------------------
+
+
+# ----- UaT Tests -----
 
 @pytest.mark.unit
-def test_combine_timeseries(cognite_client_mock):
+def test_initial_transformation(cognite_client_mock):
+    # Test that Cognite Function correctly transforms entire signal from initial date until recent date
     client = cognite_client_mock
-    # Original time series
-    ts_name_orig = "test_orig"
-    ts_orig = create_timeseries(client, ts_name_orig)
-    df = make_dummy_df(ts_name_orig, 20)  # 20 periods
-    client.time_series.data.insert_dataframe(df, external_id_headers=False)
-    ts_orig = client.time_series.data.retrieve(id=ts_orig.id).to_pandas()
-    ts_orig.index = pd.to_datetime(ts_orig.index)
-    # New time series
-    ts_name_new = "test_new"
-    ts_new = create_timeseries(client, ts_name_new)
-    df = make_dummy_df(ts_name_new, 30)  # 30 periods
-    client.time_series.data.insert_dataframe(df, external_id_headers=False)
-    ts_new = client.time_series.data.retrieve(id=ts_new.id).to_pandas()
-    ts_new.index = pd.to_datetime(ts_new.index)
-    # Combine them
-    merge_date = ts_orig.index.max()
-    ts_new_sliced = ts_new.loc[ts_new.index > merge_date]
-    ts_full = pd.concat([ts_orig, ts_new_sliced])
-    # Check that number of elements in merged time series is correct
-    assert len(ts_full) == 30
-    # Check that merging is done on correct dates (NB: assumes same granularity for all schedules)
-    dt = np.diff(ts_full)
-    assert np.all(dt == dt[0])
+    ts_input_name = "ts_input_initial"
+    ts_output_name = "ts_output_initial"
+    ts_input = client.time_series.retrieve(external_id=ts_input_name)
+    ts_output = create_timeseries(client, ts_output_name)
+    # NB: Only create time series here - insertion done in handle()
+    data = {"ts_input": ts_input, "test_run": True,
+            "ts_output": ts_output}
+    new_df = handle(client, data)
+    # Save/insert initial data in the created time series, so it can be accessed by test_continuous_transformation
+    # (can be saved inside handle)
 
+
+@pytest.mark.unit
+def test_continuous_transformation(cognite_client_mock):
+    # Test that Cognite Function works for calculating daily average of today only (or most recent write)
+    client = cognite_client_mock
+    ts_input_name = "ts_input_continuous"
+    ts_output_name = "ts_output_continuous"
+    ts_input = client.time_series.retrieve(external_id=ts_input_name)
+    ts_output = client.time_series.retrieve(external_id=ts_output_name) # retrieve time series populated by test_initial_transformation
+    data = {"ts_input": ts_input, "test_run": True,
+            "ts_output": ts_output}
+    # Do transformation test inside handle() by querying data[test_run]
+    new_df = handle(client, data)
+
+# --------------------------------
+
+
+# ----- Mathematical tests -----
 
 def test_smoothing(retrieve_timeseries):
     """Test lowess_smoothing function
@@ -121,3 +134,5 @@ def test_derivative(retrieve_timeseries):
     deriv_bnd = df["deriv"].apply(
         lambda x: 0 if x > deriv_excl or pd.isna(x) else x)
     assert np.all(deriv_bnd <= deriv_excl)
+
+# --------------------------------

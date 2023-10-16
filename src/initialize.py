@@ -7,11 +7,11 @@ from cognite_authentication import set_cdf_client_connection
 from dotenv import load_dotenv
 
 
-def initialize_client(run_sandbox: bool, cache_token: bool):
+def initialize_client(cdf_env: str, cache_token: bool):
     """Initialize Cognite client for provided project
 
     Args:
-        run_sandbox (bool): If running local testing. Assigns the open learning CDF environment
+        cdf_env (str): What CDF environment to connect to
     Raises:
         Exception: No project assigned to this client
 
@@ -25,10 +25,14 @@ def initialize_client(run_sandbox: bool, cache_token: bool):
 
     CLIENT_NAME = "akerbp"  # "Cognite Academy course taker"
     CDF_CLUSTER = "api"  # "westeurope-1"
-    if run_sandbox:
-        COGNITE_PROJECT = "akerbp-sandbox"  # "ds-basics"
-    else:
+    if cdf_env == "dev":
+        COGNITE_PROJECT = "akerbp-dev"
+    elif cdf_env == "test":
+        COGNITE_PROJECT = "akerbp-test"
+    elif cdf_env == "prod":
         COGNITE_PROJECT = "akerbp"
+    else:
+        COGNITE_PROJECT = "akerbp-sandbox"  # "ds-basics"
 
     SCOPES = [f"https://{CDF_CLUSTER}.cognitedata.com/.default"]
 
@@ -43,11 +47,16 @@ def initialize_client(run_sandbox: bool, cache_token: bool):
             client_name=CLIENT_NAME,
             project=COGNITE_PROJECT,
             client_id=str(os.getenv("CLIENT_ID")),
+            # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
             tenant_id=str(os.getenv("TENANT_ID")),
         )
     else:
         creds = OAuthClientCredentials(
-            token_url=AUTHORITY_URI + "/oauth2/v2.0/token", client_id=str(os.getenv("CLIENT_ID")), scopes=SCOPES
+            token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
+            client_id=str(os.getenv("CLIENT_ID")),
+            # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
+            scopes=SCOPES,
+            client_secret=str(os.getenv("CLIENT_SECRET")),
         )
 
         client_cnf = ClientConfig(

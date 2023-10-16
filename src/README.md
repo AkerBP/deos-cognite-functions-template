@@ -1,1 +1,1 @@
-This directoy stores each Python Package.
+This directoy contains the source code for the Cognite function and deployment.
