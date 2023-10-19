@@ -25,6 +25,9 @@ def initialize_client(cdf_env: str, cache_token: bool):
 
     CLIENT_NAME = "akerbp"  # "Cognite Academy course taker"
     CDF_CLUSTER = "api"  # "westeurope-1"
+    CLIENT_ID = str(os.getenv("CLIENT_ID"))
+    TENANT_ID = str(os.getenv("TENANT_ID"))
+
     if cdf_env == "dev":
         COGNITE_PROJECT = "akerbp-dev"
     elif cdf_env == "test":
@@ -33,6 +36,8 @@ def initialize_client(cdf_env: str, cache_token: bool):
         COGNITE_PROJECT = "akerbp"
     else:
         COGNITE_PROJECT = "akerbp-sandbox"  # "ds-basics"
+        CLIENT_ID = "779f2b3b-b599-401a-96aa-48bd29132a27"
+        TENANT_ID = "3b7e4170-8348-4aa4-bfae-06a3e1867469"
 
     SCOPES = [f"https://{CDF_CLUSTER}.cognitedata.com/.default"]
 
@@ -46,9 +51,9 @@ def initialize_client(cdf_env: str, cache_token: bool):
         client = set_cdf_client_connection(
             client_name=CLIENT_NAME,
             project=COGNITE_PROJECT,
-            client_id=str(os.getenv("CLIENT_ID")),
+            client_id=CLIENT_ID,
             # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
-            tenant_id=str(os.getenv("TENANT_ID")),
+            tenant_id=TENANT_ID,
         )
     else:
         creds = OAuthClientCredentials(
