@@ -33,9 +33,9 @@ pipreqs src
 ```
 - ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 5. Deploy and run the Cognite Function
-- The jupyter file `src/run_functions.ipynb is devoted to creating and executing the Cognite Function
+- The jupyter file `src/run_functions.ipynb` is devoted to creating and executing the Cognite Function
 - Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
-- Run the code cells consequtively authenticate with CDF and deploy the Cognite Function at a schedule for given input data
+- Run the code cells consequtively to authenticate with CDF and deploy the Cognite Function at a schedule for given input data
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
