@@ -88,7 +88,7 @@ This section outlines the procedure for creating a Cognite function for CDF, dep
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (e.g., `requirements.txt`)
+To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
 function_path = "zip_handler.zip"
