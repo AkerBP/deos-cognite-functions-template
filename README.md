@@ -1,10 +1,12 @@
 # opshub-task1
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
-The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks using Cognite Functions. The new time series is computed with a granularity of 15 minutes. For this reason, the Cognite Function is set to run on a 15 minute schedule. 
+In this project, we transform original time series data of fluid volume percentage to daily average drainage rate from the tanks using Cognite Functions. The daily average is frequently and automatically updated by letting the Cognite Function run on a 15 minute schedule. 
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
 
-The project seeks to demonstrate how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
+While this is demonstrated for a particular calculation, the goal of the project is to scale the workflow to be applicable to arbitrary transformations of arbitrary time series. The idea is to facilitate and lower the threshold for end-users and SMEs to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions.
+
+We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
 
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
