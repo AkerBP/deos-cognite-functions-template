@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from cognite.client.data_classes import TimeSeries
-from statsmodels.nonparametric.smoothers_lowess import lowess
 import sys
 import ast
 import json
@@ -26,23 +25,7 @@ def handle(client, data):
         pd.DataFrame: dataframe with drainage rate and trend (derivative)
     """
     # STEP 0: Unfold data
-    tank_volume = data['tank_volume']
-    derivative_value_excl = data['derivative_value_excl']
-
-    if data['cdf_env'] not in ["dev", "test", "prod"]:
-        # end_date = datetime(year=2022, month=6, day=26, hour=1,
-        #                     minute=0, second=0)
-        data['tot_days'] = 10
-        data['tot_minutes'] = 0
-        ts_input_name = "PI-70445:X.Value"
-        ts_output_name = "PI-70445:X.CDF.AVG.LeakRate"
-        data["ts_input_name"] = ts_input_name
-        data["ts_output_name"] = ts_output_name
-        # only if new time series already uploaded
-        end_date = pd.Timestamp.now() - pd.Timedelta(days=449)
-        start_date = end_date - \
-            timedelta(days=data['tot_days'], minutes=data['tot_minutes'])
-    else:
+    if data['cdf_env'] in ["dev", "test", "prod"]:
         ts_input_name = data['ts_input_name']
         ts_output_name = data["ts_output_name"]
         end_date = pd.Timestamp.now()
@@ -62,6 +45,51 @@ def handle(client, data):
     # Check if transformed time series already exists
     data["ts_exists"] = not ts_leak.empty
 
+    my_schedule_id, all_calls = get_schedules_and_calls(client, data)
+    data["schedule_id"] = my_schedule_id
+    data["scheduled_calls"] = all_calls
+
+    # STEP 2: Create new time series, if not already exists
+    create_timeseries(client, data)
+    orig_signal = str({ts_input_name: json.dumps(None)})
+
+    # STEP 3: Possibly perform backfilling
+    print(f"Timestamp.now: {end_date}")
+    # TODO: Change to 23 hours and 45 minutes.
+    # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
+    if end_date.hour == 7 and end_date.minute < 15 and data["ts_exists"]:
+        orig_signal = check_backfilling(client, ts_orig_extid, data)
+
+    # STEP 4: Retrieve original time series for current date
+    df_orig = retrieve_orig_ts(client, ts_orig_extid, data)
+
+    # STEP 5: Run transformations
+    try:
+        # Dynamically import from correct folder
+        import importlib
+        # globals().update(importlib.import_module(
+        #     f"{data['function_name']}.transformation").__dict__)
+        run_transformation = importlib.import_module(
+            f"{data['function_name']}.transformation").__dict__["run_transformation"]
+    except:
+        raise NotImplementedError(
+            f"Folder {data['function_name']} for doing transformation {data['function_name']} does not exist. Can't perform transformation.")
+    # NB: df_new is dataframe with only one column (transformed signal) with column label given by output name
+    df_new = run_transformation(df_orig, data)
+
+    # STEP 6: Insert transformed signal for new time range
+    client.time_series.data.insert_dataframe(df_new)
+    # client.time_series.data.insert_dataframe(mean_df)
+
+    if not data["ts_exists"]:  # return full original signal
+        orig_signal = df_orig.copy()
+        orig_signal = orig_signal[ts_input_name].to_json()
+
+    # Store original signal (for backfilling)
+    return orig_signal  # new_df[[ts_output_name]].to_json()
+
+
+def get_schedules_and_calls(client, data):
     my_func = client.functions.retrieve(external_id=data["function_name"])
     try:
         my_schedule_id = client.functions.schedules.list(
@@ -71,61 +99,21 @@ def handle(client, data):
     except:  # No schedule exist
         my_schedule_id = None
         all_calls = pd.DataFrame()
-    data["scheduled_calls"] = all_calls
+    return my_schedule_id, all_calls
 
-    # STEP 2: Create new time series, if not already exists
+
+def create_timeseries(client, data):
     if not data["ts_exists"] and not data["scheduled_calls"].empty:
         # Schedule is set up before initial write has been done locally. Abort schedule!
-        client.functions.schedules.delete(id=my_schedule_id)
+        client.functions.schedules.delete(id=data["my_schedule_id"])
         print(f"Cognite Functions can't do initial transformation. Make sure to first run handler.py locally before deploying a schedule for your Cognite Function. \
-                 Deleting ... \nSchedule with id {my_schedule_id} has been deleted.")
+                 Deleting ... \nSchedule with id {data['my_schedule_id']} has been deleted.")
         sys.exit()
     elif not data["ts_exists"]:
         print("Output time series does not exist. Creating ...")
         # client.time_series.delete(external_id=ts_output_name)
         client.time_series.create(TimeSeries(
-            name=ts_output_name, external_id=ts_output_name, data_set_id=data['dataset_id']))
-
-    orig_signal = str({ts_input_name: json.dumps(None)})
-
-    # TODO: Change to 23 hours and 45 minutes.
-    # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-    print(f"Timestamp.now: {end_date}")
-    if end_date.hour == 7 and end_date.minute < 15 and data["ts_exists"]:
-        orig_signal = check_backfilling(client, ts_orig_extid, data)
-
-    """TODO:
-    STEP 1 and 2 are general for all Cognite Functions run on any time series,
-    but STEPS 3, 4 and 5 must be collected in a specific cognite_transformation() method
-    that selects the particular cognite function we are interested in.
-    """
-    # STEP 3: Load time series from name and aggregate
-    df = retrieve_orig_ts(client, ts_orig_extid, data)
-
-    # STEP 4: Filter signal
-    plot_filter = False
-    df = filter_ts(df, plot_filter, data)
-
-    # STEP 5: Calculate daily average drainage rate [% of tank vol / sec]
-    daily_avg_drainage, df = calc_daily_avg_drain(df, data)
-
-    # external ID is column name
-    mean_df = pd.DataFrame({ts_output_name: daily_avg_drainage})
-    mean_df.index = pd.to_datetime(mean_df.index)
-
-    new_df = pd.merge(df, mean_df, on="Date")
-    new_df["draining_rate [L/min]"] = new_df["derivative_excl_filling"] * \
-        tank_volume/100  # drainage rate per TIME STAMP (not avg per day)
-
-    # STEP 5: Insert transformed signal for new time range
-    client.time_series.data.insert_dataframe(mean_df)
-
-    if not data["ts_exists"]:  # return full original signal
-        orig_signal = df.copy()
-        orig_signal = orig_signal[ts_input_name].to_json()
-
-    # Store original signal (for backfilling)
-    return orig_signal  # new_df[[ts_output_name]].to_json()
+            name=data["ts_output_name"], external_id=data["ts_output_name"], data_set_id=data['dataset_id']))
 
 
 def retrieve_orig_ts(client, ts_orig_extid, data):
@@ -167,67 +155,6 @@ def retrieve_orig_ts(client, ts_orig_extid, data):
     df['time_sec'] = (df.index - datetime(1970, 1, 1)
                       ).total_seconds()  # tot seconds since epoch'
     return df
-
-
-def filter_ts(df, plot_filter, data):
-    ts_input_name = data["ts_input_name"]
-    vol_perc = df[ts_input_name]
-
-    if __name__ == "__main__" and not data["backfill"]:
-        import time
-        print("Running lowess smoothing ...")
-        t_start = time.perf_counter()
-
-    if "lowess_frac" in data:
-        frac = data["lowess_frac"]
-    else:
-        frac = 0.01
-    if "lowess_delta" in data:
-        delta = data["lowess_delta"]
-    else:
-        delta = 0
-    smooth = lowess(vol_perc, df['time_sec'], is_sorted=True,
-                    frac=frac, it=0, delta=delta*len(vol_perc))
-
-    if __name__ == "__main__" and not data["backfill"]:
-        t_stop = time.perf_counter() - t_start
-        print("... Finished!")
-        print(f"Lowess smoothing took {round(t_stop, 1)} seconds.")
-    df_smooth = pd.DataFrame(smooth, columns=["time_sec", "smooth"])
-
-    df.reset_index(inplace=True)
-    df = df.rename(columns={'index': 'time_stamp'})
-    df = pd.merge(df, df_smooth, on='time_sec')
-    df.set_index('time_stamp', drop=True, append=False,
-                 inplace=True, verify_integrity=False)
-
-    if plot_filter:
-        df.plot(x="time_sec", y=[ts_input_name, "smooth"])
-        plt.show()
-
-    return df
-
-
-def calc_daily_avg_drain(df, data):
-    try:
-        df["derivative"] = np.gradient(df['smooth'], df["time_sec"])
-    except:
-        raise IndexError(
-            "No datapoints found for selected date range. Cannot compute drainage rate.")
-
-    derivative_value_excl = data['derivative_value_excl']
-    df['derivative_excl_filling'] = df["derivative"].apply(
-        lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
-
-    df.reset_index(inplace=True)
-    df.index = pd.to_datetime(df['time_stamp'])
-    df['Date'] = df.index.date
-    df["Date"] = pd.to_datetime(df["Date"])
-
-    mean_drainage_day = df.groupby('Date')['derivative_excl_filling'].mean(
-    )*data['tank_volume']/100  # avg drainage rate per DAY
-
-    return mean_drainage_day, df
 
 
 def check_backfilling(client, ts_orig_extid, data):
@@ -343,24 +270,14 @@ def check_backfilling(client, ts_orig_extid, data):
         for date in backfill_dates:
             start_date = pd.to_datetime(date)
             end_date = pd.to_datetime(date+timedelta(days=1))
-            df_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                       aggregates="average",
-                                                       granularity="1m",
-                                                       start=start_date,
-                                                       end=end_date
-                                                       ).to_pandas()
             # NB: need to change time frame in data
             data["start_date"] = start_date
             data["end_date"] = end_date
+
             df_orig = retrieve_orig_ts(client, ts_orig_extid, data)
-            df_orig = filter_ts(df_orig, False, data)
+            df_new = run_transformation(df_orig, data)
 
-            daily_avg_drainage, df = calc_daily_avg_drain(df_orig, data)
-
-            mean_df = pd.DataFrame({ts_output_name: daily_avg_drainage})
-            mean_df.index = pd.to_datetime(mean_df.index)
-
-            client.time_series.data.insert_dataframe(mean_df)
+            client.time_series.data.insert_dataframe(df_new)
 
     # return recent original signal
     return ts_orig_all[[ts_input_name]].to_json()
@@ -381,17 +298,22 @@ if __name__ == '__main__':
 
     load_dotenv("../handler-data.env")
 
+    in_name = "VAL_11-LT-95034A:X.Value"
+    out_name = "VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"
+
     tank_volume = 1400
     derivative_value_excl = 0.002
     # start_date = datetime(2023, 3, 21, 1, 0, 0)
+    func_name = "avg_drainage_rate"
+    sched_name = f"{func_name}_schedule"
 
     data_dict = {'tot_days': 0, 'tot_minutes': 15,  # convert date to str to make it JSON serializable
-                 'ts_input_name': str(os.getenv("TS_INPUT_NAME")), 'ts_output_name': str(os.getenv("TS_OUTPUT_NAME")),
+                 'ts_input_name': in_name, 'ts_output_name': out_name,
                  'derivative_value_excl': derivative_value_excl, 'tank_volume': tank_volume,
                  # NB: change dataset id when going to dev/test/prod!
                  'cdf_env': cdf_env, 'dataset_id': int(os.getenv("DATASET_ID")),
                  'backfill': False, 'backfill_period': 7,
-                 'function_name': str(os.getenv("FUNCTION_NAME")), 'schedule_name': str(os.getenv("SCHEDULE_NAME")),
+                 'function_name': func_name, 'schedule_name': sched_name,
                  'lowess_frac': 0.001, 'lowess_delta': 0.01}
 
     # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
