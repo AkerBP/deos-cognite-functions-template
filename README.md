@@ -99,17 +99,18 @@ The `src` folder is organized as follows.
 │   ├── cf_avg_drainage_rate
 │   │   ├── zip_handler.zip
 │   │   ├── requirements.txt
-│   │   ├── handler.py
+│   │   ├── transformation.py
 │   ├── cf_A
 │   │   ├── zip_handler.zip
 │   │   ├── requirements.txt
-│   │   ├── handler.py
+│   │   ├── transformation.py
 │   ├── cf_B
+│   ├── handler.py
 │   ├── cognite_authentication.py
 │   ├── initialize.py
 │   └── run_functions.ipynb
 ```
-Here we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
+Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and the main entry point `handler.py` containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname`, including `transformation.py` containing transformations/calculations for this particular Cognite Function, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
