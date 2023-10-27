@@ -35,9 +35,6 @@ pipreqs src/cf_myname
 ```
 - ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 
-## Deploy and run Cognite Functions
-- Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
-
 ## Authentication with Python SDK.
 To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
 - Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
@@ -85,35 +82,54 @@ To get the daily average leakage rate, we group the data by date, calculate the 
 
 ## Deployment of Cognite Function and scheduling
 This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose, and contains the code snippets listed in this section. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
-The code repository `src` is organized as follows.
---- SHOW FOLDER STRUCTURE ---
-In the parent folder we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
+The repository is organized as follows.
+
+├── docs
+├── src
+|   ├── README.md
+|   ├── __init__.py
+│   ├── cf_avg_drainage_rate
+│   │   ├── zip_handler.zip
+│   │   ├── requirements.txt
+│   │   ├── handler.py
+│   ├── cf_A
+│   │   ├── zip_handler.zip
+│   │   ├── requirements.txt
+│   │   ├── handler.py
+│   ├── cf_B
+│   ├── cognite_authentication.py
+│   ├── initialize.py
+│   ├── run_functions.ipynb
+└── tests
+
+The `src` folder is the "hub" for Cognite Functions, where we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-First, we create a Cognite File that links our Cognite Function with the associated dataset. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
+First, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
 function_path = "zip_handler.zip"
 
 uploaded = client.files.upload(path=f"{folder}/{function_path}", name=function_path, data_set_id=dataset_id)
 ```
+The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
 ### 2. Deployment
-The next step is to create an instance of the `handle` function to be deployed to CDF.
+The next step is to create an instance of the `handle` function (located in the subfolder `cf_avg_drainage_rate`) to be deployed to CDF. 
 ```
 func_drainage = client.functions.create(
-    name="avg-drainage-rate",
-    external_id="avg-drainage-rate",
+    name="avg_drainage_rate",
+    external_id="avg_drainage_rate",
     file_id=uploaded.id,
 )
 ```
-The `file_id` is assigned the id of the newly created zip file. 
+The `file_id` is assigned the id of the newly created zip file.
 ### 3. Set up schedule
 Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
-    name="avg-drainage-rate-schedule",
+    name="avg_drainage_rate_schedule",
     cron_expression="*/15 * * * *", # every 15 min
     function_id=func_drainage.id, # id of function instance
     description="Calculation scheduled every hour",
