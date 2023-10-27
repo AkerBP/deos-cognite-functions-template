@@ -27,17 +27,16 @@ pip install "cognite-sdk[pandas, numpy]"
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 4. Specify dependencies in `requirements.txt`
-- To deploy Cognite Functions, the main entry point, `handler.py`, is supported by a `requirements.txt` file located in the same folder
+- The main entry point for a Cognite Function `myname` is a `handler.py` containing the particular transformations/calculations of your time series. This is located in the subfolder `cf_myname`, and is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
 pip install pipreqs
-pipreqs src
+pipreqs src/cf_myname
 ```
 - ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
-5. Deploy and run the Cognite Function
-- The jupyter file `src/run_functions.ipynb` is devoted to creating and executing the Cognite Function
+
+## Deploy and run Cognite Functions
 - Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
-- Run the code cells consequtively to authenticate with CDF and deploy the Cognite Function at a schedule for given input data
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
@@ -70,7 +69,7 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Calculation of drainage rate
-This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage. If you are only interested in deployment of Cognite Functions, we recommend jumping to section Update time series at prescribed schedules.
+This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
 
 Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
 ```
@@ -85,12 +84,15 @@ drainage_rate = np.gradient(smooth, time)
 To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The code snippets are found in `run_functions.ipynb`.
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose, and contains the code snippets listed in this section. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
+The code repository `src` is organized as follows.
+--- SHOW FOLDER STRUCTURE ---
+In the parent folder we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
 
-*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
+*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
+First, we create a Cognite File that links our Cognite Function with the associated dataset. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
 function_path = "zip_handler.zip"
