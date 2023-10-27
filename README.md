@@ -1,10 +1,21 @@
 # opshub-task1
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
-The goal of this project is to transform original time series data of fluid volume percentage to drainage rate from the tanks using Cognite Functions. The new time series is computed with a granularity of 15 minutes. For this reason, the Cognite Function is set to run on a 15 minute schedule. 
+In this project, we transform original time series data of fluid volume percentage to daily average drainage rate from the tanks using Cognite Functions. The daily average is frequently and automatically updated by letting the Cognite Function run on a 15 minute schedule. 
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
 
-The project seeks to demonstrate how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
+While this is demonstrated for a particular calculation, the goal of the project is to scale the workflow to be applicable to arbitrary transformations of arbitrary time series. The idea is to facilitate and lower the threshold for end-users and SMEs with minor knowledge in data science to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions.
+
+We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/]. The repository is organized as follows (standard template files in parent folder are omitted).
+```markdown
+├── docs
+|   ├── development
+├── src
+├── tests
+├── authentication-data.env
+└── handler_data.env
+```
+Here, `src` is the main "hub" for creating and deploying Cognite Functions, `tests` provides scripts for unit tests and UaT tests, and in `docs/development` you find detailed documentation of project development and deployment. `authentication-data.env` contains IDs for your tenant and the client to authenticate with, and `handler-data.env` holds variables that are agnostic to the Cognite Functions, for instance the dataset id.
 
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
@@ -25,17 +36,13 @@ pip install "cognite-sdk[pandas, numpy]"
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
 - For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
 4. Specify dependencies in `requirements.txt`
-- To deploy Cognite Functions, the main entry point, `handler.py`, is supported by a `requirements.txt` file located in the same folder
+- The main entry point for a Cognite Function `myname` is a `handler.py` containing the particular transformations/calculations of your time series. This is located in the subfolder `cf_myname`, and is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
 pip install pipreqs
-pipreqs src
+pipreqs src/cf_myname
 ```
 - ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
-5. Deploy and run the Cognite Function
-- The jupyter file `src/run_functions.ipynb` is devoted to creating and executing the Cognite Function
-- Input data to the `handle` function in `handler.py` is provided by the `data_dict` dictionary. If you create your own Cognite Function, make sure to change the key-value pairs to fit your purpose
-- Run the code cells consequtively to authenticate with CDF and deploy the Cognite Function at a schedule for given input data
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
@@ -68,7 +75,7 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Calculation of drainage rate
-This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage. If you are only interested in deployment of Cognite Functions, we recommend jumping to section Update time series at prescribed schedules.
+This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
 
 Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
 ```
@@ -83,33 +90,53 @@ drainage_rate = np.gradient(smooth, time)
 To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The code snippets are found in `run_functions.ipynb`.
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose, and contains the code snippets listed in this section. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
+The `src` folder is organized as follows.
+```markdown
+├── src
+|   ├── README.md
+|   ├── __init__.py
+│   ├── cf_avg_drainage_rate
+│   │   ├── zip_handler.zip
+│   │   ├── requirements.txt
+│   │   ├── handler.py
+│   ├── cf_A
+│   │   ├── zip_handler.zip
+│   │   ├── requirements.txt
+│   │   ├── handler.py
+│   ├── cf_B
+│   ├── cognite_authentication.py
+│   ├── initialize.py
+│   └── run_functions.ipynb
+```
+Here we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
 
-*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The message of improving their documentation of Cognite functions has been conveyed to the CDF team to hopefully resolve any confusions regarding deployment.*
+*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-To successfully write a Cognite function to CDF, we first need to create a Cognite file scoped to the dataset (with id `dataset_id`) that our function is associated with. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
+First, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
 function_path = "zip_handler.zip"
 
 uploaded = client.files.upload(path=f"{folder}/{function_path}", name=function_path, data_set_id=dataset_id)
 ```
+The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
 ### 2. Deployment
-The next step is to create an instance of the `handle` function to be deployed to CDF.
+The next step is to create an instance of the `handle` function (located in the subfolder `cf_avg_drainage_rate`) to be deployed to CDF. 
 ```
 func_drainage = client.functions.create(
-    name="avg-drainage-rate",
-    external_id="avg-drainage-rate",
+    name="avg_drainage_rate",
+    external_id="avg_drainage_rate",
     file_id=uploaded.id,
 )
 ```
-The `file_id` is assigned the id of the newly created zip file. 
+The `file_id` is assigned the id of the newly created zip file.
 ### 3. Set up schedule
 Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_drainage_schedule = client.functions.schedules.create(
-    name="avg-drainage-rate-schedule",
+    name="avg_drainage_rate_schedule",
     cron_expression="*/15 * * * *", # every 15 min
     function_id=func_drainage.id, # id of function instance
     description="Calculation scheduled every hour",
@@ -142,10 +169,15 @@ client.time_series.data.insert_dataframe(mean_df)
 where `mean_df` is a dataframe with calculated daily average leakage from current date.
 
 ## Testing
-The integrity and quality of the data product is tested using several approaches. 
-- A framework for unit testing is found in the folder `tests`
-- User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
-- System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
+The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
+```markdown
+├── tests
+|   ├── __init__.py
+|   ├── conftest.py
+|   ├── test_methods.py
+|   └── utils.py
+```
+where `conftest.py` sets up necessary configurations of the tests, and `test_methods.py` contains the actual unit tests and UaTs. Test scenarios and results for the latter are documented in the file `docs/development/SIT-UaT-Test.xlsx`.
 
 ## Presentation in Grafana
 - To facilitate an insightful presentation of the transformed time series, we deploy it to the Grafana appliation. Through an Aker BP tenant, Grafana seamlessly connects to CDF as a source system. Once data is deployed to CDF, an API interface handles the ingestion of data into Grafana.
