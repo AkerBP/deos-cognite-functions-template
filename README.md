@@ -6,7 +6,16 @@ The new time series will be published as a new dataset in the Cognite Fusion Pro
 
 While this is demonstrated for a particular calculation, the goal of the project is to scale the workflow to be applicable to arbitrary transformations of arbitrary time series. The idea is to facilitate and lower the threshold for end-users and SMEs with minor knowledge in data science to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions.
 
-We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/].
+We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/]. The repository is organized as follows (standard template files in parent folder are omitted).
+```markdown
+├── docs
+|   ├── development
+├── src
+├── tests
+├── authentication-data.env
+└── handler_data.env
+```
+Here, `src` is the main "hub" for creating and deploying Cognite Functions, `tests` provides scripts for unit tests and UaT tests, and in `docs/development` you find detailed documentation of project development and deployment. `authentication-data.env` contains IDs for your tenant and the client to authenticate with, and `handler-data.env` holds variables that are agnostic to the Cognite Functions, for instance the dataset id.
 
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
@@ -82,9 +91,8 @@ To get the daily average leakage rate, we group the data by date, calculate the 
 
 ## Deployment of Cognite Function and scheduling
 This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose, and contains the code snippets listed in this section. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
-The repository is organized as follows.
-
-├── docs
+The `src` folder is organized as follows.
+```markdown
 ├── src
 |   ├── README.md
 |   ├── __init__.py
@@ -99,10 +107,9 @@ The repository is organized as follows.
 │   ├── cf_B
 │   ├── cognite_authentication.py
 │   ├── initialize.py
-│   ├── run_functions.ipynb
-└── tests
-
-The `src` folder is the "hub" for Cognite Functions, where we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
+│   └── run_functions.ipynb
+```
+Here we find authentication scripts `cognite_authentication.py` and `initialize.py` as well as the deployment script `run_functions.ipynb`. The subfolder `cf_myname` contains all files necessary to deploy your Cognite Function with name `myname`. The required content is a main entry point `handler.py` with a `handle(client, data)` function that performs the relevant transformations/calculations using a Cognite `client` and relevant input data provided in the dictionary `data`, supported by a `requirements.txt` file, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. 
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
@@ -162,10 +169,15 @@ client.time_series.data.insert_dataframe(mean_df)
 where `mean_df` is a dataframe with calculated daily average leakage from current date.
 
 ## Testing
-The integrity and quality of the data product is tested using several approaches. 
-- A framework for unit testing is found in the folder `tests`
-- User Acceptance Testing (UaT), including plan and test scenarios, have been performed and are documented in the file `docs/development/SIT-UaT-Test`
-- System Integration Testing (SIT) is not applicable for this project, because we are not using any external extractors or APIs for data processing
+The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
+```markdown
+├── tests
+|   ├── __init__.py
+|   ├── conftest.py
+|   ├── test_methods.py
+|   └── utils.py
+```
+where `conftest.py` sets up necessary configurations of the tests, and `test_methods.py` contains the actual unit tests and UaTs. Test scenarios and results for the latter are documented in the file `docs/development/SIT-UaT-Test.xlsx`.
 
 ## Presentation in Grafana
 - To facilitate an insightful presentation of the transformed time series, we deploy it to the Grafana appliation. Through an Aker BP tenant, Grafana seamlessly connects to CDF as a source system. Once data is deployed to CDF, an API interface handles the ingestion of data into Grafana.
