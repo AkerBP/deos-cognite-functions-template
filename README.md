@@ -125,12 +125,13 @@ The desired Cognite Function `myname` is run by supplying `myname` as value to t
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Create file
-First, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handler.zip` in the root directory containing the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `initialize.py` and `cognite_authentication.py`)
+First, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handle.zip` in the subfolder `cf_*myname*` designated for the Cognite Function with name `myname`. The zip file contains the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `handler_utils.py` and `transformation.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
-function_path = "zip_handler.zip"
+folder_cf = folder + "/" + data_dict["function_name"]
+zip_name = "zip_handle.zip"
 
-uploaded = client.files.upload(path=f"{folder}/{function_path}", name=function_path, data_set_id=dataset_id)
+uploaded = client.files.upload(path=f"{folder_cf}/{zip_name}", name=zip_name, data_set_id=dataset_id)
 ```
 The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
 ### 2. Deployment
