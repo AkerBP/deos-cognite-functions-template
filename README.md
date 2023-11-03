@@ -74,7 +74,7 @@ config = ClientConfig(
 - Your Cognite client is instantiated by running `client = CogniteClient(config)`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
-## Calculation of drainage rate
+## Calculation of drainage rate (CONSIDER REMOVING THIS!)
 This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
 
 Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
@@ -97,20 +97,30 @@ The `src` folder is organized as follows.
 |   ├── README.md
 |   ├── __init__.py
 │   ├── cf_avg_drainage_rate
-│   │   ├── zip_handler.zip
+│   │   ├── zip_handle.zip
 │   │   ├── requirements.txt
+│   │   ├── handler.py
 │   │   ├── transformation.py
 │   ├── cf_A
-│   │   ├── zip_handler.zip
+│   │   ├── zip_handle.zip
 │   │   ├── requirements.txt
+│   │   ├── handler.py
 │   │   ├── transformation.py
 │   ├── cf_B
-│   ├── handler.py
+│   ├── handler_utils.py
 │   ├── cognite_authentication.py
 │   ├── initialize.py
 │   └── run_functions.ipynb
 ```
-Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and the main entry point `handler.py` containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname`, including `transformation.py` containing transformations/calculations for this particular Cognite Function, and a Cognite File `zip_handler.zip` scoped to the dataset that our function is associated with. The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
+Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and a utility script `handler_utils.py` with functionality common for all Cognite Functions run on a time series. 
+
+The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname`. 
+1. `handler.py`: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`
+2. `transformation.py`: script containing transformations/calculations for the particular Cognite Function
+3. `requirements.txt`: file containing Python package requirements to run the Cognite Function
+4.  `zip_handle.zip`: a Cognite File scoped to the dataset that our function is associated with
+
+The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
