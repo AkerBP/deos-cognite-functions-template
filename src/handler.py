@@ -69,6 +69,7 @@ def handle(client, data):
         import importlib
         # globals().update(importlib.import_module(
         #     f"{data['function_name']}.transformation").__dict__)
+        global run_transformation
         run_transformation = importlib.import_module(
             f"{data['function_name']}.transformation").__dict__["run_transformation"]
     except:
@@ -225,14 +226,13 @@ def check_backfilling(client, ts_orig_extid, data):
     output_df.index.name = "Date"
     # Column created with standard value 0 ...
     yesterday_df = output_df.rename(columns={0: data["ts_input_name"]})
-    print("Yesterday index: ", yesterday_df.index)
-
     # -----------------
 
     if not yesterday_df.empty:  # empty if no scheduled call from yesterday
 
         num_dates_old = yesterday_df.groupby(yesterday_df.index).count()
         num_dates_old.index = pd.to_datetime(num_dates_old.index)
+        print("Yesterday index: ", num_dates_old.index)
         # ----------------
 
         # 1. For each write, store number of data points in ORIGINAL signal for each date - store in file associated with dataset ID.
