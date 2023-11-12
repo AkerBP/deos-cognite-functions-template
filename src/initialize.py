@@ -7,7 +7,7 @@ from cognite_authentication import set_cdf_client_connection
 from dotenv import load_dotenv
 
 
-def initialize_client(cdf_env: str, cache_token: bool):
+def initialize_client(cdf_env: str, cache_token: bool, path_to_env=None):
     """Initialize Cognite client for provided project
 
     Args:
@@ -21,7 +21,10 @@ def initialize_client(cdf_env: str, cache_token: bool):
     """
     # TENANT_ID = "3b7e4170-8348-4aa4-bfae-06a3e1867469"#"48d5043c-cf70-4c49-881c-c638f5796997"
     # CLIENT_ID = "779f2b3b-b599-401a-96aa-48bd29132a27"#"fab52bb5-9de2-4f9e-aefa-712da4b5fe00"
-    load_dotenv("../authentication-ids.env")
+    if path_to_env is not None:
+        load_dotenv(path_to_env)
+    else:
+        load_dotenv("../authentication-ids.env")
 
     CLIENT_NAME = "akerbp"  # "Cognite Academy course taker"
     CDF_CLUSTER = "api"  # "westeurope-1"
