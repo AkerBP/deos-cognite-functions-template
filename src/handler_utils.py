@@ -14,7 +14,9 @@ def get_orig_timeseries(client, data, transform_func):
     # STEP 0: Unfold data
     ts_input_name = data['ts_input_name']
     ts_output_name = data["ts_output_name"]
-    end_date = pd.Timestamp.now()
+    # ------------------
+    end_date = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)
+    # .-----------------
     # from the start (00:00:00) of end_date
     start_date = pd.to_datetime(end_date.date())
 
@@ -44,7 +46,7 @@ def get_orig_timeseries(client, data, transform_func):
     print(f"Timestamp.now: {end_date}")
     # TODO: Change to 23 hours and 45 minutes.
     # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-    if end_date.hour == 11 and end_date.minute < 15 and data["ts_exists"]:
+    if end_date.hour == 16 and end_date.minute >= 30 and end_date.minute < 45 and data["ts_exists"]:
         df_orig_backfill = check_backfilling(client, data, transform_func)
 
     # STEP 4: Retrieve original time series for current date
@@ -159,7 +161,9 @@ def check_backfilling(client, data, transform_func):
         columns={ts_orig_extid + "|average": ts_input_name})
 
     ts_orig_dates = pd.DataFrame(
-        {ts_input_name: pd.to_datetime(ts_orig_all.index.date)})
+        {"Date": pd.to_datetime(ts_orig_all.index.date),
+         ts_input_name: ts_orig_all[ts_input_name]},
+        index=pd.to_datetime(ts_orig_all.index))
 
     # ---------------- get_yesterday_orig_signal() ------------------
     my_func = client.functions.retrieve(external_id=data["function_name"])
@@ -169,14 +173,14 @@ def check_backfilling(client, data, transform_func):
         print("No schedule called yet. Nothing to compare with to do backfilling!")
         return ts_orig_all[[ts_input_name]].to_json()
 
-    now = pd.Timestamp.now()  # provided in local time
+    # ----------------
+    now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
+    # ----------------
     start_time = datetime(now.year, now.month, now.day-1,
-                          14, 30)  # -1 to get previous day
-    print("start time: ", pytz.utc.localize(start_time))
+                          16, 30)  # -1 to get previous day
     start_time = pytz.utc.localize(
         start_time).timestamp() * 1000  # convert to local time
-    end_time = datetime(now.year, now.month, now.day-1, 14, 45)
-    # *1000 -> millisec since epoch
+    end_time = datetime(now.year, now.month, now.day-1, 16, 45)
     end_time = pytz.utc.localize(end_time).timestamp() * 1000
 
     mask_start = scheduled_calls["scheduled_time"] >= start_time
@@ -196,58 +200,53 @@ def check_backfilling(client, data, transform_func):
     output_dict = ast.literal_eval(last_backfill_call.get_response())[
         data["ts_input_name"]]
 
-    start_30_day_period = pd.to_datetime(
-        last_backfill_call.scheduled_time, unit="ms") - timedelta(days=30)
-    end_30_day_period = pd.to_datetime(
-        last_backfill_call.scheduled_time, unit="ms")
-
     output_df = pd.DataFrame.from_dict([output_dict]).T
     output_df.index = pd.to_datetime(
-        output_df.index.astype(np.int64), unit="ms").date  # astype(int)*1e7 for testing
-    output_df.index.name = "Date"
+        output_df.index.astype(np.int64), unit="ms")
+    output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
+
     # Column created with standard value 0 ...
-    yesterday_df = output_df.rename(columns={0: data["ts_input_name"]})
+    yesterday_df = output_df.rename(columns={0: ts_input_name})
     # -----------------
 
     if not yesterday_df.empty:  # empty if no scheduled call from yesterday
+        print("Dates from yesterday's signal: ", yesterday_df.index.values)
+        print("Dates from today's signal: ", ts_orig_dates.index.values)
+        # 1. Only include overlapping parts of signal from today and yesterday
+        backfill_date_start = ts_orig_dates.index[0]
+        backfill_date_stop = yesterday_df.index[-1]
+        yesterday_df = yesterday_df[yesterday_df.index >= backfill_date_start]
+        ts_orig_dates = ts_orig_dates[ts_orig_dates.index <= backfill_date_stop]
 
-        num_dates_old = yesterday_df.groupby(yesterday_df.index).count()
+        # 2. Store number of data points in ORIGINAL signal for each date, for yesterday and today
+        num_dates_old = yesterday_df.groupby(yesterday_df["Date"]).count()
         num_dates_old.index = pd.to_datetime(num_dates_old.index)
-        print("Yesterday index: ", num_dates_old.index)
-        # ----------------
+        num_dates_old = num_dates_old.rename(columns={ts_input_name: "Datapoints"})
 
-        # 1. For each write, store number of data points in ORIGINAL signal for each date - store in file associated with dataset ID.
-        # number of datapoints for each date
-        num_dates_new = ts_orig_dates.groupby(ts_input_name)[
-            ts_input_name].count()
-        num_dates_new = pd.DataFrame(num_dates_new)
-        print("Today index: ", num_dates_new.index)
-
-        num_dates_new.index.name = "Date"
-
-        # Truncate original values to backfilled period
-        num_dates_old = num_dates_old[num_dates_old.index >=
-                                      num_dates_new.index[0]]
+        num_dates_new = ts_orig_dates.groupby(ts_orig_dates["Date"]).count()
+        num_dates_new = num_dates_new.rename(columns={ts_input_name: "Datapoints"})
 
         missing_dates = num_dates_new[~num_dates_new.index.isin(
             num_dates_old.index)].index
-        missing_dates = pd.DataFrame({ts_input_name:
+        missing_dates = pd.DataFrame({"Datapoints":
                                       np.zeros(len(missing_dates), dtype=np.int32)}, index=missing_dates)
 
         # New df with zero count for missing dates
         num_dates_old = pd.concat([num_dates_old, missing_dates]).sort_index()
+        # print("num_dates_old: ", num_dates_old)
+        # print("num_dates_new: ", num_dates_new)
 
-        # 2. Backfilling: Redo transformations if num datapoints have INCREASED or DECREASED for any dates
-        increased_dates = num_dates_new[num_dates_new[ts_input_name] >
-                                        num_dates_old[ts_input_name]].index
-        print(f"Backfilling. Dates with NEW data: {increased_dates}")
+        # 3. Only backfill if num datapoints have INCREASED or DECREASED for any dates
+        increased_dates = num_dates_new[num_dates_new["Datapoints"] >
+                                        num_dates_old["Datapoints"]].index
+        print(f"Backfilling. Dates with NEW data: {increased_dates.values}")
 
-        decreased_dates = num_dates_new[num_dates_new[ts_input_name] <
-                                        num_dates_old[ts_input_name]].index
-        print(f"Backfilling. Dates with DELETED data: {decreased_dates}")
+        decreased_dates = num_dates_new[num_dates_new["Datapoints"] <
+                                        num_dates_old["Datapoints"]].index
+        print(f"Backfilling. Dates with DELETED data: {decreased_dates.values}")
         backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
-        # 3. Redo transformations for modified dates
+        # 4. Redo transformations for modified dates
         for date in backfill_dates:
             start_date = pd.to_datetime(date)
             end_date = pd.to_datetime(date+timedelta(days=1))
