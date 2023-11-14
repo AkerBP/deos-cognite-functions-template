@@ -3,7 +3,8 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 import numpy as np
 
-def run_transformation(df, data):
+def run_transformation(data):
+    df = data["df_orig_today"]
     ts_input_name = data["ts_input_name"]
     ts_output_name = data["ts_output_name"]
     agg_df = df.resample("30T").agg({ts_input_name: "mean"})

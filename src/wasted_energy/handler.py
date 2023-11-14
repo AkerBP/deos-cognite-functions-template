@@ -30,17 +30,20 @@ def handle(client, data):
         pd.DataFrame: dataframe with drainage rate and trend (derivative)
     """
     # STEP 1: Load (and backfill) original time series
-    df_orig_today, df_orig_full, data = get_orig_timeseries(
-        client, data, run_transformation)
+    data = get_orig_timeseries(client, data, run_transformation)
+    df_orig_backfill = []
+    for ts in data.keys():
+        if "df_orig_backfill" in ts:
+            df_orig_backfill.append(data[ts]["df_orig_backfill"])
 
     # STEP 2: Run transformations
-    df_new = run_transformation(df_orig_today, data)
+    df_new = run_transformation(data)
 
     # STEP 3: Insert transformed signal for new time range
     client.time_series.data.insert_dataframe(df_new)
 
     # Store original signal (for backfilling)
-    return df_orig_full
+    return df_orig_backfill
 
 
 if __name__ == '__main__':

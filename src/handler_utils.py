@@ -10,53 +10,57 @@ import ast
 import json
 
 
-def get_orig_timeseries(client, data, transform_func):
-    # STEP 0: Unfold data
-    ts_input_name = data['ts_input_name']
-    ts_output_name = data["ts_output_name"]
-    # ------------------
+def get_orig_timeseries(client, data_dicts, transform_func):
     end_date = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)
-    # .-----------------
     # from the start (00:00:00) of end_date
     start_date = pd.to_datetime(end_date.date())
-
-    data["start_date"] = start_date
-    data["end_date"] = end_date
-
-    # STEP 1: Retrieve time series and function schedules
-    ts_orig = client.time_series.list(
-        name=ts_input_name).to_pandas()  # original time series (vol percentage)
-
-    data["ts_orig_extid"] = ts_orig.external_id[0]
-
-    ts_leak = client.time_series.list(
-        name=ts_output_name).to_pandas()  # transformed time series (leakage)
-    # Check if transformed time series already exists
-    data["ts_exists"] = not ts_leak.empty
-
-    my_schedule_id, all_calls = get_schedules_and_calls(client, data)
-    data["schedule_id"] = my_schedule_id
-    data["scheduled_calls"] = all_calls
-
-    # STEP 2: Create new time series, if not already exists
-    create_timeseries(client, data)
-    df_orig_backfill = str({ts_input_name: json.dumps(None)})
-
-    # STEP 3: Possibly perform backfilling
     print(f"Timestamp.now: {end_date}")
-    # TODO: Change to 23 hours and 45 minutes.
-    # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-    if end_date.hour == 16 and end_date.minute >= 30 and end_date.minute < 45 and data["ts_exists"]:
-        df_orig_backfill = check_backfilling(client, data, transform_func)
 
-    # STEP 4: Retrieve original time series for current date
-    df_orig_today = retrieve_orig_ts(client, data)
+    for ts in data_dicts.keys():
+        data = data_dicts[ts]
+        # STEP 0: Unfold data
+        ts_input_name = data['ts_input_name']
+        ts_output_name = data["ts_output_name"]
 
-    if not data["ts_exists"]:  # return full original signal
-        df_orig_backfill = df_orig_today.copy()
-        df_orig_backfill = df_orig_backfill[data["ts_input_name"]].to_json()
+        data["start_date"] = start_date
+        data["end_date"] = end_date
 
-    return df_orig_today, df_orig_backfill, data
+        # STEP 1: Retrieve time series and function schedules
+        ts_orig = client.time_series.list(
+            name=ts_input_name).to_pandas()  # original time series (vol percentage)
+
+        data["ts_orig_extid"] = ts_orig.external_id[0]
+
+        ts_leak = client.time_series.list(
+            name=ts_output_name).to_pandas()  # transformed time series (leakage)
+        # Check if transformed time series already exists
+        data["ts_exists"] = not ts_leak.empty
+
+        my_schedule_id, all_calls = get_schedules_and_calls(client, data)
+        data["schedule_id"] = my_schedule_id
+        data["scheduled_calls"] = all_calls
+
+        # STEP 2: Create new time series, if not already exists
+        create_timeseries(client, data)
+        df_orig_backfill = str({ts_input_name: json.dumps(None)})
+
+        # STEP 3: Possibly perform backfilling
+        # TODO: Change to 23 hours and 45 minutes.
+        # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
+        if end_date.hour == 16 and end_date.minute >= 30 and end_date.minute < 45 and data["ts_exists"]:
+            df_orig_backfill = check_backfilling(client, data, transform_func)
+
+        # STEP 4: Retrieve original time series for current date
+        df_orig_today = retrieve_orig_ts(client, data)
+
+        if not data["ts_exists"]:  # return full original signal
+            df_orig_backfill = df_orig_today.copy()
+            df_orig_backfill = df_orig_backfill[data["ts_input_name"]].to_json()
+
+        data["df_orig_today"] = df_orig_today
+        data["df_orig_backfill"] = df_orig_backfill
+
+    return data_dicts
 
 
 def get_schedules_and_calls(client, data):

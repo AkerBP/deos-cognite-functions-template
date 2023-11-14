@@ -3,7 +3,8 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 import numpy as np
 
-def run_transformation(df, data):
+def run_transformation(data):
+    df = data["df_orig_today"]
     if 'plot_filter' in data:
         plot_filter = data["plot_filter"]
     else:
