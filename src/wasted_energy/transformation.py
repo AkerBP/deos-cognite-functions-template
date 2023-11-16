@@ -13,11 +13,8 @@ def run_transformation(data):
     Returns:
         pd.DataFrame: output time series of wasted energy
     """
-    ts_input = {}
-    for ts in data.keys():
-        if "df_orig_today" in data[ts]:
-            ts_input[ts] = data[ts]["df_orig_today"]
 
+    ts_data = data["df_orig_today"]
     # ts_input["ts_ipc"] is time series outputted from Cognite Function "ideal_power_consumption"
     ts_we = calculate_wasted_energy(ts_input["ts_4"], ts_input["ts_5"], ts_input["ts_ipc"])
 

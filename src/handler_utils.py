@@ -11,55 +11,87 @@ import json
 
 
 def get_orig_timeseries(client, data_dicts, transform_func):
+    """Get original time series signals used to compute new output signal from tranform_func
+
+    Args:
+        client (CogniteClient): client to authenticate with cognite
+        data_dicts (dict): dictionary with input data and parameters used in transformation,
+                            including global properties and sub-dictionaries (e.g. key-values for specific time series)
+        transform_func (function): transformation function from run_transformation
+
+    Returns:
+        dict: updated data dictionaries
+    """
     end_date = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)
     # from the start (00:00:00) of end_date
     start_date = pd.to_datetime(end_date.date())
+    data_dicts["start_time"] = start_date
+    data_dicts["end_time"] = end_date
     print(f"Timestamp.now: {end_date}")
 
-    for ts in data_dicts.keys():
-        data = data_dicts[ts]
-        # STEP 0: Unfold data
-        ts_input_name = data['ts_input_name']
-        ts_output_name = data["ts_output_name"]
+    ts_output_name = data_dicts["ts_output_name"]
 
-        data["start_date"] = start_date
-        data["end_date"] = end_date
+    ts_leak = client.time_series.list(
+            name=ts_output_name).to_pandas()  # transformed time series (leakage)
+    # Check if transformed time series already exists
+    data_dicts["ts_exists"] = not ts_leak.empty
 
-        # STEP 1: Retrieve time series and function schedules
+    my_schedule_id, all_calls = get_schedules_and_calls(client, data_dicts)
+    data_dicts["schedule_id"] = my_schedule_id
+    data_dicts["scheduled_calls"] = all_calls
+
+    # Create new time series, if not already exists
+
+    create_timeseries(client, data_dicts, ts)
+
+    data_dicts["ts_input_today"] = {ts_name: [] for ts_name in data_dicts["ts_input"].keys()} # stores original signal only for current date
+    data_dicts["ts_input_backfill"] = {ts_name: [] for ts_name in data_dicts["ts_input"].keys()} # stores original signal for entire backfill period (to be compared when doing next backfilling)
+
+    for ts in data_dicts['ts_input'].keys():
+        data = data_dicts['ts_input'][ts]
+
+        # STEP 2: Retrieve time series and function schedules
         ts_orig = client.time_series.list(
-            name=ts_input_name).to_pandas()  # original time series (vol percentage)
+            name=ts).to_pandas()  # original time series (vol percentage)
 
         data["ts_orig_extid"] = ts_orig.external_id[0]
 
-        ts_leak = client.time_series.list(
-            name=ts_output_name).to_pandas()  # transformed time series (leakage)
-        # Check if transformed time series already exists
-        data["ts_exists"] = not ts_leak.empty
+        ts_input_backfill = str({ts: json.dumps(None)})
 
-        my_schedule_id, all_calls = get_schedules_and_calls(client, data)
-        data["schedule_id"] = my_schedule_id
-        data["scheduled_calls"] = all_calls
-
-        # STEP 2: Create new time series, if not already exists
-        create_timeseries(client, data)
-        df_orig_backfill = str({ts_input_name: json.dumps(None)})
-
-        # STEP 3: Possibly perform backfilling
+        # STEP 3: Identify backfill candidates
         # TODO: Change to 23 hours and 45 minutes.
         # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-        if end_date.hour == 16 and end_date.minute >= 30 and end_date.minute < 45 and data["ts_exists"]:
-            df_orig_backfill = check_backfilling(client, data, transform_func)
+        if end_date.hour == 16 and end_date.minute >= 30 and end_date.minute < 45 and data_dicts["ts_exists"]:
+            ts_input_backfill, backfill_dates = check_backfilling(client, data_dicts, ts, transform_func)
 
-        # STEP 4: Retrieve original time series for current date
-        df_orig_today = retrieve_orig_ts(client, data)
+        # STEP 4: Perform backfilling on dates with discrepancies in datapoints
+        for date in backfill_dates:
+            data_dicts["start_time"] = pd.to_datetime(date)
+            data_dicts["end_time"] = pd.to_datetime(date+timedelta(days=1))
 
-        if not data["ts_exists"]:  # return full original signal
+            for ts_name in data_dicts["ts_input"].keys():
+                df_orig_today = retrieve_orig_ts(client, data_dicts, ts_name)
+                data_dicts["ts_input_today"][ts_name] = df_orig_today[ts_name]
+
+            df_new = transform_func(data_dicts)
+
+            client.time_series.data.insert_dataframe(df_new)
+
+        # STEP 5: After backfilling, retrieve original signal for intended transformation period (i.e., today)
+        data_dicts["start_time"] = start_date
+        data_dicts["end_time"] = end_date
+
+        df_orig_today = retrieve_orig_ts(client, data_dicts, ts)
+        data_dicts["ts_input_today"][ts] = df_orig_today[ts]
+
+        if not data_dicts["ts_exists"]:  # return full original signal
             df_orig_backfill = df_orig_today.copy()
-            df_orig_backfill = df_orig_backfill[data["ts_input_name"]].to_json()
+            ts_input_backfill = df_orig_backfill[ts].to_json()
 
-        data["df_orig_today"] = df_orig_today
-        data["df_orig_backfill"] = df_orig_backfill
+        # data_dicts["df_orig_backfill"] += df_orig_backfill
+        data_dicts["ts_input_backfill"][ts] = ts_input_backfill
 
+    # data_dicts["df_orig_backfill"] = ast.literal_eval(data_dicts["df_orig_backfill"].replace("}{", ","))
     return data_dicts
 
 
@@ -85,21 +117,23 @@ def create_timeseries(client, data):
         sys.exit()
     elif not data["ts_exists"]:
         print("Output time series does not exist. Creating ...")
-        # client.time_series.delete(external_id=ts_output_name)
-        client.time_series.create(TimeSeries(
-            name=data["ts_output_name"], external_id=data["ts_output_name"], data_set_id=data['dataset_id']))
+        if len(data["ts_input_name"]) > len(data["ts_output_name"]):
+         asset_ids
+        for ts_in, ts_out in zip(data["ts_input_name"], data["ts_output_names"]):
+            client.time_series.retrieve()
+            # client.time_series.delete(external_id=ts_output_name)
+            client.time_series.create(TimeSeries(
+                name=ts_name, external_id=ts_name, data_set_id=data['dataset_id'], ))
 
 
-def retrieve_orig_ts(client, data):
-    ts_input_name = data["ts_input_name"]
-    ts_output_name = data["ts_output_name"]
+def retrieve_orig_ts(client, data_dicts, ts_input_name):
+    data = data_dicts[ts_input_name]
     ts_orig_extid = data["ts_orig_extid"]
 
-    start_date = data["start_date"]
-    end_date = data["end_date"]
-
+    start_date = data_dicts["start_time"]
+    end_date = data_dicts["end_time"]
     # If no data in output time series, run cognite function from first available date of original time series until date with last updated datapoint
-    if not data["ts_exists"]:
+    if not data_dicts["ts_exists"]:
         first_date_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                            aggregates="average",
                                                            granularity="1m",
@@ -132,7 +166,7 @@ def retrieve_orig_ts(client, data):
     return df
 
 
-def check_backfilling(client, data, transform_func):
+def check_backfilling(client, data_dicts, ts_input_name, transform_func):
     """Runs a backfilling for last data["backfill_days"] days of input time series.
 
     Args:
@@ -143,13 +177,12 @@ def check_backfilling(client, data, transform_func):
     Returns:
         (dict): jsonified version of original signal (last 7 day period)
     """
-    ts_input_name = data["ts_input_name"]
-    ts_output_name = data["ts_output_name"]
+    data = data_dicts[ts_input_name]
     ts_orig_extid = data["ts_orig_extid"]
 
-    end_date = data["end_date"]
-    start_date = end_date - timedelta(days=data["backfill_days"])
-    data['backfill'] = True
+    end_date = data_dicts["end_time"]
+    start_date = end_date - timedelta(days=data_dicts["backfill_days"])
+    # data['backfill'] = True
 
     # Search through prev 7 days of original time series for backfilling
     ts_orig_all = client.time_series.data.retrieve(external_id=ts_orig_extid,
@@ -164,14 +197,8 @@ def check_backfilling(client, data, transform_func):
     ts_orig_all = ts_orig_all.rename(
         columns={ts_orig_extid + "|average": ts_input_name})
 
-    ts_orig_dates = pd.DataFrame(
-        {"Date": pd.to_datetime(ts_orig_all.index.date),
-         ts_input_name: ts_orig_all[ts_input_name]},
-        index=pd.to_datetime(ts_orig_all.index))
-
-    # ---------------- get_yesterday_orig_signal() ------------------
-    my_func = client.functions.retrieve(external_id=data["function_name"])
-    scheduled_calls = data["scheduled_calls"]
+    my_func = client.functions.retrieve(external_id=data_dicts["function_name"])
+    scheduled_calls = data_dicts["scheduled_calls"]
 
     if scheduled_calls.empty:
         print("No schedule called yet. Nothing to compare with to do backfilling!")
@@ -194,24 +221,28 @@ def check_backfilling(client, data, transform_func):
         last_backfill_id = scheduled_calls[mask_start & mask_end]["id"].iloc[0]
     except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
         print(
-            f"No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
+            f"No schedule from yesterday. Can't backfill. Returning original signal from last {data_dicts['backfill_days']} days.")
         return ts_orig_all[[ts_input_name]].to_json()
 
     last_backfill_call = my_func.retrieve_call(id=last_backfill_id)
     print(
-        f"Retrieving scheduled call from yesterday with id {last_backfill_id}. Backfilling time series for last {data['backfill_days']} days ...")
+        f"Retrieving scheduled call from yesterday with id {last_backfill_id}. Backfilling time series for last {data_dicts['backfill_days']} days ...")
 
     output_dict = ast.literal_eval(last_backfill_call.get_response())[
-        data["ts_input_name"]]
+        ts_input_name]
 
     output_df = pd.DataFrame.from_dict([output_dict]).T
     output_df.index = pd.to_datetime(
         output_df.index.astype(np.int64), unit="ms")
     output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
 
-    # Column created with standard value 0 ...
+    # YESTERDAY's signal spanning backfilling period
     yesterday_df = output_df.rename(columns={0: ts_input_name})
-    # -----------------
+    # TODAY's signal spanning backfilling period
+    ts_orig_dates = pd.DataFrame(
+        {"Date": pd.to_datetime(ts_orig_all.index.date),
+         ts_input_name: ts_orig_all[ts_input_name]},
+        index=pd.to_datetime(ts_orig_all.index))
 
     if not yesterday_df.empty:  # empty if no scheduled call from yesterday
         print("Dates from yesterday's signal: ", yesterday_df.index.values)
@@ -251,20 +282,20 @@ def check_backfilling(client, data, transform_func):
         backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
         # 4. Redo transformations for modified dates
-        for date in backfill_dates:
-            start_date = pd.to_datetime(date)
-            end_date = pd.to_datetime(date+timedelta(days=1))
-            # NB: need to change time frame in data
-            data["start_date"] = start_date
-            data["end_date"] = end_date
+        # for date in backfill_dates:
+        #     start_date = pd.to_datetime(date)
+        #     end_date = pd.to_datetime(date+timedelta(days=1))
+        #     # NB: need to change time frame in data
+        #     data["start_date"] = start_date
+        #     data["end_date"] = end_date
 
-            df_orig = retrieve_orig_ts(client, data)
-            df_new = transform_func(df_orig, data)
+        #     df_orig = retrieve_orig_ts(client, data_dicts, ts_input_name)
+        #     df_new = transform_func(data_dicts)
 
-            client.time_series.data.insert_dataframe(df_new)
+        #     client.time_series.data.insert_dataframe(df_new)
 
     # return recent original signal
-    return ts_orig_all[[ts_input_name]].to_json()
+    return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
 
 
 if __name__ == "__main__":

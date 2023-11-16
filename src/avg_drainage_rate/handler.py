@@ -34,7 +34,7 @@ def handle(client, data):
         client, data, run_transformation)
 
     # STEP 2: Run transformations
-    df_new = run_transformation(df_orig_today, data)
+    df_new = run_transformation(data)#run_transformation(df_orig_today, data)
 
     # STEP 3: Insert transformed signal for new time range
     client.time_series.data.insert_dataframe(df_new)

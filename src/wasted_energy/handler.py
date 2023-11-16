@@ -31,19 +31,16 @@ def handle(client, data):
     """
     # STEP 1: Load (and backfill) original time series
     data = get_orig_timeseries(client, data, run_transformation)
-    df_orig_backfill = []
-    for ts in data.keys():
-        if "df_orig_backfill" in ts:
-            df_orig_backfill.append(data[ts]["df_orig_backfill"])
 
     # STEP 2: Run transformations
-    df_new = run_transformation(data)
+    df_new = run_transformation(data) # df_new is list of output time series (dataframes)
 
     # STEP 3: Insert transformed signal for new time range
-    client.time_series.data.insert_dataframe(df_new)
+    for df in df_new:
+        client.time_series.data.insert_dataframe(df)
 
-    # Store original signal (for backfilling)
-    return df_orig_backfill
+    # Store input signals (for backfilling)
+    return data["ts_input_backfill"]
 
 
 if __name__ == '__main__':
