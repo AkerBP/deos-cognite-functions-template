@@ -1,10 +1,9 @@
 # Template for deployment of Cognite Functions for time series calculations
 ## Introduction
-Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
-In this project, we transform original time series data of fluid volume percentage to daily average drainage rate from the tanks using Cognite Functions. The daily average is frequently and automatically updated by letting the Cognite Function run on a 15 minute schedule. 
-The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
+This project provides a template for a workflow using Cognite Functions to run transformations of time series. The framework generalizes to arbitrary calculations of single or multiple time series. The idea is to facilitate and lower the threshold for end-users and SMEs with minor knowledge in data science to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions. For a concise guide for deployment of Cognite Functions, see [Cognite-Function-Demonstration](https://github.com/Aker-BP-OpsHub/Cognite-Function-Demonstration).
 
-While this is demonstrated for a particular calculation, the goal of the project is to scale the workflow to be applicable to arbitrary transformations of arbitrary time series. The idea is to facilitate and lower the threshold for end-users and SMEs with minor knowledge in data science to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions.
+We demonstrate the framework by transforming a time series of fluid volume percentage to a new time series of daily average drainage rate from the tanks. The new time series is frequently and automatically updated by letting the Cognite Function run on a prescribed schedule. The setup also facilitates backfilling for quality assurance of the new signal. 
+The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
 
 We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/]. The repository is organized as follows (standard template files in parent folder are omitted).
 ```markdown
@@ -34,7 +33,7 @@ conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal ipy
 pip install "cognite-sdk[pandas, numpy]"
 ```
 - The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
-- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See (https://github.com/cognitedata/using-cognite-python-sdk) for more details
+- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See [using-cognite-python-sdk](https://github.com/cognitedata/using-cognite-python-sdk) for more details
 4. Specify dependencies in `requirements.txt`
 - The main entry point for a Cognite Function `myname` is a `handler.py` containing the particular transformations/calculations of your time series. This is located in the subfolder `cf_myname`, and is supported by a `requirements.txt` file located in the same folder
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
@@ -46,13 +45,13 @@ pipreqs src/cf_myname
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
-- Create a user (or sign into your existing) account at (Cognite Hub)[https://hub.cognite.com/]. This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
+- Create a user (or sign into your existing) account at [Cognite Hub](https://hub.cognite.com/). This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
 - To authenticate with the Cognite API we generate a client credential, more specifically a `OAuthClientCredentials`. Authentication is done in `src/initialize.py`. Five parameters must be specified:
   1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
-  2. `CLIENT_ID`: ID of the application in Azure AD. This will be unique value available to users that have been granted write access to the dataset. It is found in your "Key vaults > *key_vault_name* > Secrets" service at (Microsoft Azure)[https://portal.azure.com/#home] (reach out to the CDF team if you don't know the exact *key_vault_name*), where the relevant key has suffix ending "-ID"
+  2. `CLIENT_ID`: ID of the application in Azure AD. This will be unique value available to users that have been granted write access to the dataset. It is found in your "Key vaults > *key_vault_name* > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) (reach out to the CDF team if you don't know the exact *key_vault_name*), where the relevant key has suffix ending "-ID"
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-  5. `CLIENT SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at (Microsoft Azure)[https://portal.azure.com/#home] where the relevant key has suffix ending "-SECRET"
+  5. `CLIENT SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) where the relevant key has suffix ending "-SECRET"
 - With these, we can authenticate by fetching our credentials
 ```
 creds = OAuthClientCredentials(
