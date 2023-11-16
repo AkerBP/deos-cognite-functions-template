@@ -1,4 +1,4 @@
-# opshub-task1
+# Template for deployment of Cognite Functions for time series calculations
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
 In this project, we transform original time series data of fluid volume percentage to daily average drainage rate from the tanks using Cognite Functions. The daily average is frequently and automatically updated by letting the Cognite Function run on a 15 minute schedule. 
@@ -74,21 +74,6 @@ config = ClientConfig(
 - Your Cognite client is instantiated by running `client = CogniteClient(config)`
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
-## Calculation of drainage rate (CONSIDER REMOVING THIS!)
-This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
-
-Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
-```
-smooth = lowess(vol_perc, time, is_sorted=True,
-                frac=0.01, it=0, delta=delta)
-```
-
-After filtering, the drainage rate is calculated as the derivative of the volume percentage. For this, we use `numpy`s `gradient` function, operating on the full vector of datapoints.
-```
-drainage_rate = np.gradient(smooth, time)
-```
-To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
-
 ## Deployment of Cognite Function and scheduling
 This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose, and contains the code snippets listed in this section. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
 The `src` folder is organized as follows.
@@ -155,30 +140,6 @@ func_drainage_schedule = client.functions.schedules.create(
     data=data_dict
 )
 ```
-## Reading/writing time series
-This section briefly outlines the steps from reading a time series to writing to a new time series. Firstly, we check if the transformed time series already exists. If not, we create the time series (code snippets from `handler.py`)
-```
-ts_leak = client.time_series.list(name=ts_output_name).to_pandas()  # transformed time series
-if ts_leak.empty:
-    client.time_series.create(
-        TimeSeries(name=ts_output_name, external_id=ts_output_name, data_set_id=dataset_id)
-    )
-```
-Apart from the initial transformation of all historic datapoints, we only query and transform parts of the original time series from the current date. To not put too much pressure on the system, we aggregate the signal with 1 minute averages.
-```
-end_date = pd.Timestamp.now()
-start_date = pd.to_datetime(end_date.date())
-ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                               aggregates="average",
-                                               granularity="1m",
-                                               start=start_date,
-                                               end=end_date)
-```
-The units of the calculated daily average drainage rate is thus in [L/min]. The calculations from `start` to `end` are inserted into the transformed time series 
-```
-client.time_series.data.insert_dataframe(mean_df)
-```
-where `mean_df` is a dataframe with calculated daily average leakage from current date.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
@@ -191,12 +152,23 @@ The integrity and quality of the data product is tested using several approaches
 ```
 where `conftest.py` sets up necessary configurations of the tests, and `test_methods.py` contains the actual unit tests and UaTs. Test scenarios and results for the latter are documented in the file `docs/development/SIT-UaT-Test.xlsx`.
 
-## Presentation in Grafana
-- To facilitate an insightful presentation of the transformed time series, we deploy it to the Grafana appliation. Through an Aker BP tenant, Grafana seamlessly connects to CDF as a source system. Once data is deployed to CDF, an API interface handles the ingestion of data into Grafana.
-- The time series is to be part of a pump health dashboard containing all kind of insightful data of the "health" of a particular pump. The panels of this dashboard serve the relevant data in a visually pleasing way. We generate a new panel for this dashboard that visualizes our transformed time series, along with other data visualizations of the pump, and the data is continuously updated along with new data that enters CDF.
-
 ## Improvements for access request system
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
 - The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
 - If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed
 - The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope
+
+## *OPTIONAL READ:* Calculation of drainage rate
+This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
+
+Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
+```
+smooth = lowess(vol_perc, time, is_sorted=True,
+                frac=0.01, it=0, delta=delta)
+```
+
+After filtering, the drainage rate is calculated as the derivative of the volume percentage. For this, we use `numpy`s `gradient` function, operating on the full vector of datapoints.
+```
+drainage_rate = np.gradient(smooth, time)
+```
+To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
