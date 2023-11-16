@@ -1,4 +1,4 @@
-# opshub-task1
+# Template for deployment of Cognite Functions for time series calculations
 ## Introduction
 Some tanks on Aker BPs assets are missing draining rate measurements. Draining rate is valuable data to detect leakages from tanks.
 In this project, we transform original time series data of fluid volume percentage to daily average drainage rate from the tanks using Cognite Functions. The daily average is frequently and automatically updated by letting the Cognite Function run on a 15 minute schedule. 
