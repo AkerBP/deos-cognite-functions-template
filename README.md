@@ -100,9 +100,20 @@ Here we find authentication scripts `cognite_authentication.py` and `initialize.
 
 The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname`. 
 1. `handler.py`: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`
-2. `transformation.py`: script containing transformations/calculations for the particular Cognite Function
-3. `requirements.txt`: file containing Python package requirements to run the Cognite Function
-4.  `zip_handle.zip`: a Cognite File scoped to the dataset that our function is associated with
+2. `transformation.py`: script containing transformations/calculations for the particular Cognite Function, encapsulated in a `run_transformation` function with the following template
+   ```
+   def run_transformation(data):
+    ts_data = get_input_ts(data)
+    ts_data = align_time_series(ts_data, data)
+    
+    ts_output = calculation(data, *ts_data)
+   
+    out_list = store_output_ts(ts_output, data)
+    return out_list
+   ```
+   where the only modification required is a programmatic setup of your calculation in the `calculation` function, taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_data` of time series inputs. **NB:** Make sure that the time series in `ts_data` are listed in correct order according to the calculations performed in `calculation`.
+4. `requirements.txt`: file containing Python package requirements to run the Cognite Function
+5.  `zip_handle.zip`: a Cognite File scoped to the dataset that our function is associated with
 
 The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
 
