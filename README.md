@@ -19,8 +19,8 @@ Here, `src` is the main "hub" for creating and deploying Cognite Functions, `tes
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
 ```
-git clone https://github.com/vetlenev/opshub-task1.git
-cd opshub-task1
+git clone https://github.com/AkerBP-DataOps/deos-cognite-functions-template.git
+cd deos-cognite-functions-template
 ```
 2. Create a virtual environment using conda
 ```
