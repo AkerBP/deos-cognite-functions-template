@@ -98,9 +98,9 @@ The `src` folder is organized as follows.
 ```
 Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and a utility script `handler_utils.py` with functionality common for all Cognite Functions run on a time series. 
 
-The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname`. 
-1. `handler.py`: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`
-2. `transformation.py`: script containing transformations/calculations for the particular Cognite Function, encapsulated in a `run_transformation` function with the following template
+The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname` (where convention is that different words in `myname` are separated by dashes (-). 
+1. **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`
+2. **`transformation.py`**: script containing transformations/calculations for the particular Cognite Function, encapsulated in a `run_transformation` function with the following template
    ```
    def run_transformation(data):
     ts_data = get_input_ts(data)
@@ -111,11 +111,11 @@ The subfolder `cf_*myname*` contains all files specific for your Cognite Functio
     out_list = store_output_ts(ts_output, data)
     return out_list
    ```
-   where the only modification required is a programmatic setup of your calculation in the `calculation` function, taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_data` of time series inputs. **NB:** Make sure that the time series in `ts_data` are listed in correct order according to the calculations performed in `calculation`.
-4. `requirements.txt`: file containing Python package requirements to run the Cognite Function
-5.  `zip_handle.zip`: a Cognite File scoped to the dataset that our function is associated with
+   where the only modification required is a programmatic setup of your calculation in the `calculation` function, taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_data` of time series inputs. ***NB:*** Make sure that the time series in `ts_data` are listed in correct order according to the calculations performed in `calculation`.
+4. **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
+5. **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
-The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
+The desired Cognite Function `myname` is run by supplying `myname` as value to the `function_name` key in the `data` argument of `handle`, i.e., `data['function_name'] = *myname*`. The input `data` can be modified in the `data_dict` dictionary in `run_functions.ipynb`
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
@@ -130,11 +130,11 @@ uploaded = client.files.upload(path=f"{folder_cf}/{zip_name}", name=zip_name, da
 ```
 The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
 ### 2. Deployment
-The next step is to create an instance of the `handle` function (located in the subfolder `cf_avg_drainage_rate`) to be deployed to CDF. 
+The next step is to create an instance of the `handle` function (located in the subfolder `cf_*myname*`) to be deployed to CDF. 
 ```
-func_drainage = client.functions.create(
-    name="avg_drainage_rate",
-    external_id="avg_drainage_rate",
+func_myname = client.functions.create(
+    name=f"{data_dict['function_name']}",
+    external_id=f"{data_dict['function_name']}",
     file_id=uploaded.id,
 )
 ```
@@ -142,10 +142,10 @@ The `file_id` is assigned the id of the newly created zip file.
 ### 3. Set up schedule
 Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
-func_drainage_schedule = client.functions.schedules.create(
-    name="avg_drainage_rate_schedule",
+func_myname_schedule = client.functions.schedules.create(
+    name=f"{data_dict['function_name']}",
     cron_expression="*/15 * * * *", # every 15 min
-    function_id=func_drainage.id, # id of function instance
+    function_id=func_myname.id, # id of function instance
     description="Calculation scheduled every hour",
     data=data_dict
 )
