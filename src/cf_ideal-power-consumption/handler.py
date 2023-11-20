@@ -31,18 +31,15 @@ def handle(client, data):
     """
     # STEP 1: Load (and backfill) original time series
     data = get_orig_timeseries(client, data, run_transformation)
-    df_orig_backfill = []
-    for d in data:
-        df_orig_backfill.append(d["df_orig_backfill"])
 
     # STEP 2: Run transformations
     df_new = run_transformation(data)
 
-    # STEP 3: Insert transformed signal for new time range
+    # STEP 3: Insert transformed signal(s) for new time range (done simultaneously for multiple time series outputs)
     client.time_series.data.insert_dataframe(df_new)
 
     # Store original signal (for backfilling)
-    return df_orig_backfill
+    return data["ts_input_backfill"]
 
 
 if __name__ == '__main__':
@@ -59,22 +56,21 @@ if __name__ == '__main__':
     client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    in_name = "VAL_11-LT-95007A:X.Value"
-    out_name = "VAL_11-LT-95007A:X.CDF.D.AVG.LeakValue"
-
+    ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
+    ts_output_names = ["VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue"]
     tank_volume = 1400
     derivative_value_excl = 0.002
     # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    func_name = "VAL_11-LT-95007A"
+    function_name = "ideal-power-consumption"
 
-    data_dict = {'tot_days': 0, 'tot_minutes': 15,  # convert date to str to make it JSON serializable
-                 'ts_input_name': in_name, 'ts_output_name': out_name,
-                 'derivative_value_excl': derivative_value_excl, 'tank_volume': tank_volume,
-                 # NB: change dataset id when going to dev/test/prod!
-                 'cdf_env': cdf_env, 'dataset_id': int(os.getenv("DATASET_ID")),
-                 'backfill': False, 'backfill_days': 7,
-                 'function_name': func_name,
-                 'lowess_frac': 0.001, 'lowess_delta': 0.01}
+    data_dict = {'granularity':60,
+                'ts_input':{name:{} for name in ts_input_names}, # empty dictionary for each time series input
+                'ts_output':{name:{} for name in ts_output_names},
+                'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
+                'cdf_env':"dev", 'dataset_id': 1832663593546318,
+                'backfill': False, 'backfill_days': 10,
+                'function_name': function_name,
+                'lowess_frac': 0.001, 'lowess_delta': 0.01} # NB: change dataset id when going to dev/test/prod!
 
-    # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
+    # client.time_series.delete(external_id="VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue")
     new_df = handle(client, data_dict)
