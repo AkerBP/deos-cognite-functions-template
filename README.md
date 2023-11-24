@@ -100,16 +100,29 @@ The `src` folder is organized as follows.
 ```
 Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment procedure in `deploy_cognite_functions.py`, an interactive script `run_functions.ipynb` to actually deploy a Cognite Function, and utility scripts `handler_utils.py` and `transformation_utils.py` containing the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Function scheduling. 
 
-The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname` (where convention is that different words in `myname` are separated by dashes (-). 
-1. **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`, called as follows
+The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname` (where convention is that different words in `myname` are separated by dashes (-).
+- **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`. Regardless of Cognite Function, the `handle` function reads
 ```
-transform_timeseries = RunTransformations(data, ts_in)
-ts_out = transform_timeseries(eval(calculation))
+def handle(client, data):
+    calculation = data["calculation_function"]
+
+    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    data = PrepTS.get_orig_timeseries(eval(calculation))
+    ts_df = PrepTS.get_ts_df()
+    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
+   
+    transform_timeseries = RunTransformations(data, ts_df)
+    ts_out = transform_timeseries(eval(calculation))
+
+    df_out = transform_timeseries.store_output_ts(ts_out)
+    client.time_series.data.insert_dataframe(df_out)
+
+    return data["ts_input_backfill"]
 ```
-where the only modification required is a programmatic setup of your calculation in the `calculation` function, taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time series inputs. ***NB:*** Make sure that the time series in `ts_in` are listed in correct order according to the calculations performed in `calculation`.
-2. **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
-3. **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
-4. **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
+  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time    series inputs. ***NB:*** Make sure that the time series in `ts_in` are listed in correct order according to the calculations performed in `calculation`.
+- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
+- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
+- **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
 The desired Cognite Function *myname* is run by supplying *myname* as value to the `function_name` key in the `data` argument of `handle`, i.e., `data['function_name'] = myname`. The same principle applies for the calculation function *my_calc_name', i.e., `data['calculation_function'] = my_calc_name`. Here, `data` corresponds to the `data_dict` dictionary in `run_functions.ipynb`.
 
