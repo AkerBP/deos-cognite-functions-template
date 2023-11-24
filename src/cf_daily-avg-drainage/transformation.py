@@ -11,7 +11,7 @@ def calc_daily_avg_drainage(data, ts):
         ts (pd.DataFrame): (single) input time series
 
     Returns:
-        pd.DataFrame: data points for transformed signal
+        pd.Series: data points for transformed signal
     """
     ts = filter_ts(ts, data)
 

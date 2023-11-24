@@ -11,7 +11,7 @@ def calc_wasted_energy(data, ts_0, ts_1, ts_ipc):
         ts_ipc (pd.DataFrame): time series calculated by cf_ideal-power-consumption, 'VAL_11-PT-92363B:X.Value'
 
     Returns:
-        pd.DataFrame: data points of output time series
+        pd.Series: data points of output time series
     """
     wasted_energy = pd.Series(0., index=ts_0.index)
     if isinstance(ts_1, float) or isinstance(ts_1, int):
