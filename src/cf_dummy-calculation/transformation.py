@@ -4,8 +4,17 @@ import os
 import sys
 
 def calc_A(data, ts_0):
+    """Calculation function
+
+    Args:
+        data (dict): calculation-specific parameters for Cognite Function
+        ts_0 (pd.DataFrame): (only) input time series
+
+    Returns:
+        pd.DataFrame: data points for transformed signal
+    """
     ts_out = ts_0.rolling(window=int(len(ts_0)/10)).mean()
-    return [ts_out]
+    return ts_out
 
 def calc_B(data, ts_0, ts_1):
     window_size = np.ceil(len(ts_0)/100)

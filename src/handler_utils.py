@@ -212,8 +212,6 @@ class PrepareTimeSeries:
 
         df = df.rename(columns={ts_orig_extid + "|average": ts_in})
 
-        df['time_sec'] = (df.index - datetime(1970, 1, 1)
-                        ).total_seconds()  # tot seconds since epoch'
         return df
 
     def align_time_series(self, ts_df):
@@ -241,7 +239,7 @@ class PrepareTimeSeries:
             (list): list of time series dataframes
         """
         ts_data = self.data["ts_input_today"]
-        ts_data = [ts_data[name] for name in ts_data]
+        ts_data = [pd.DataFrame(ts_data[name]) for name in ts_data]
         return ts_data
 
     def check_backfilling(self, ts_input_name, testing=False):
@@ -260,7 +258,6 @@ class PrepareTimeSeries:
 
         end_date = data["end_time"]
         start_date = end_date - timedelta(days=data["backfill_days"])
-        # data['backfill'] = True
         backfill_dates = []
 
         # Search through prev 7 days of original time series for backfilling

@@ -17,7 +17,11 @@ class RunTransformations:
         Returns:
             (list): list of datapoints for resulting calculation, one array per output time series
         """
-        ts_out = calc_func(self.data, *self.ts_df)
+        ts_out = calc_func(self.data["calc_params"], *self.ts_df)
+
+        if not isinstance(ts_out, list): # convert to list of one output time series
+            ts_out = [ts_out]
+
         return ts_out
 
     def store_output_ts(self, ts_output):
