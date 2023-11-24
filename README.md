@@ -92,24 +92,20 @@ The `src` folder is organized as follows.
 │   │   ├── transformation.py
 │   ├── cf_B
 │   ├── handler_utils.py
+│   ├── transformation_utils.py
 │   ├── cognite_authentication.py
 │   ├── initialize.py
+│   ├── deploy_cognite_functions.py
 │   └── run_functions.ipynb
 ```
-Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and a utility script `handler_utils.py` with functionality common for all Cognite Functions run on a time series. 
+Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a deployment script `run_functions.ipynb`, and utility scripts `handler_utils.py` and `transformation_utils.py` containing the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Functions scheduling. 
 
 The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname` (where convention is that different words in `myname` are separated by dashes (-). 
 1. **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`
-2. **`transformation.py`**: script containing transformations/calculations for the particular Cognite Function, encapsulated in a `run_transformation` function with the following template
+2. **`transformation.py`**: script preparing input and output time series for transformations, done through the `PrepareTimeSeries` class, where the transformations/calculations for the particular Cognite Function are run by calling an instance of the `RunTransformations` class,
    ```
-   def run_transformation(data):
-    ts_data = get_input_ts(data)
-    ts_data = align_time_series(ts_data, data)
-    
-    ts_output = calculation(data, *ts_data)
-   
-    out_list = store_output_ts(ts_output, data)
-    return out_list
+   transform_timeseries = RunTransformations(data, ts_in)
+   ts_out = transform_timeseries(calculation)
    ```
    where the only modification required is a programmatic setup of your calculation in the `calculation` function, taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_data` of time series inputs. ***NB:*** Make sure that the time series in `ts_data` are listed in correct order according to the calculations performed in `calculation`.
 4. **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
@@ -139,8 +135,10 @@ func_myname = client.functions.create(
 )
 ```
 The `file_id` is assigned the id of the newly created zip file.
-### 3. Set up schedule
-Finally, we set up a schedule for our function. Here, we want the function to run every 15 minutes. This is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
+### 3. Initial transformation
+Once deployed, we can transform our time series using the Cognite Function. The first call will transform all historic datapoints of the input time series. This could potentially be a lot of data, and since Cognite Function schedules are limited in terms of runtime, we perform our initial transformation by calling the Cognite Function individually.
+### 4. Set up schedule
+Finally, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 func_myname_schedule = client.functions.schedules.create(
     name=f"{data_dict['function_name']}",
@@ -149,6 +147,7 @@ func_myname_schedule = client.functions.schedules.create(
     description="Calculation scheduled every hour",
     data=data_dict
 )
+
 ```
 
 ## Testing
