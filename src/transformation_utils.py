@@ -15,7 +15,7 @@ class RunTransformations:
             calc_func (function): function to run calculation
 
         Returns:
-            (list): list of datapoints for resulting calculation, one array per output time series
+            (list): list of datapoints for resulting calculation, one dataframe per output time series
         """
         ts_out = calc_func(self.data["calc_params"], *self.ts_df)
 

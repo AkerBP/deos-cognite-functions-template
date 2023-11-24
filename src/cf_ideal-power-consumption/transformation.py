@@ -12,7 +12,7 @@ def calc_ideal_power_consumption(data, ts_0, ts_1, ts_2, ts_3):
         ts_3 (pd.DataFrame): time series input 'VAL_11-XT-95067B:Z.X.Value'
 
     Returns:
-        pd.DataFrame: data points of output time series
+        pd.Series: data points of output time series
     """
     ts_inputs = [ts_0, ts_1, ts_2, ts_3]
 
