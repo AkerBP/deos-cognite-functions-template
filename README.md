@@ -120,7 +120,7 @@ def handle(client, data):
     return data["ts_input_backfill"]
 ```
   where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time    series inputs. ***NB:*** Make sure that the time series in `ts_in` are listed in correct order according to the calculations performed in `calculation`.
-- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
+- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should return a pandas.Series object and follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
