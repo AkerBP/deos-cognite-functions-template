@@ -1,46 +1,42 @@
 import os
 import sys
-from cognite.client.data_classes import TimeSeries
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import pytz
-import time
-from datetime import datetime, timedelta
 
 parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
-from handler_utils import get_orig_timeseries
-from transformation import run_transformation
+from handler_utils import PrepareTimeSeries #get_orig_timeseries
+from transformation_utils import RunTransformations
+from transformation import *
 
 def handle(client, data):
-    """Calculate drainage rate per timestamp and per day from tank,
-    using Lowess filtering on volume percentage data from the tank.
-    Large positive derivatives of signal are excluded to ignore
-    human interventions (filling) of tank.
-    Data of drainage rate helps detecting leakages.
+    """Main entry point for Cognite Functions fetching input time series,
+    transforming the signals, and storing the output in new time series.
 
     Args:
         client (CogniteClient): client used to authenticate cognite session
         data (dict): data input to the handle
 
     Returns:
-        pd.DataFrame: dataframe with drainage rate and trend (derivative)
+        str: jsonified data from input signals spanning backfilling period
     """
-    # STEP 1: Load (and backfill) original time series
-    df_orig_today, df_orig_full, data = get_orig_timeseries(
-        client, data, run_transformation)
+    calculation = data["calculation_function"]
+    # STEP 1: Load (and backfill) and organize input time series'
+    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    data = PrepTS.get_orig_timeseries(eval(calculation))
+    ts_df = PrepTS.get_ts_df()
+    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
 
     # STEP 2: Run transformations
-    df_new = run_transformation(data)#run_transformation(df_orig_today, data)
-
-    # STEP 3: Insert transformed signal for new time range
-    client.time_series.data.insert_dataframe(df_new)
+    transform_timeseries = RunTransformations(data, ts_df)
+    # df_new = run_transformation(data, ts_df)
+    ts_out = transform_timeseries(eval(calculation))
+    # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
+    df_out = transform_timeseries.store_output_ts(ts_out)
+    client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return df_orig_full
+    return data["ts_input_backfill"]
 
 
 if __name__ == '__main__':
@@ -57,13 +53,13 @@ if __name__ == '__main__':
     client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    in_name = "VAL_11-LT-95034A:X.Value"
-    out_name = "VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"
+    in_name = "VAL_11-LT-95007A:X.Value"
+    out_name = "VAL_11-LT-95007A:X.CDF.D.AVG.LeakValue"
 
     tank_volume = 1400
     derivative_value_excl = 0.002
     # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    func_name = "avg_drainage_rate"
+    func_name = "VAL_11-LT-95007A"
 
     data_dict = {'tot_days': 0, 'tot_minutes': 15,  # convert date to str to make it JSON serializable
                  'ts_input_name': in_name, 'ts_output_name': out_name,

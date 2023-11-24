@@ -30,24 +30,22 @@ def handle(client, data):
         pd.DataFrame: dataframe with drainage rate and trend (derivative)
     """
     # STEP 1: Load (and backfill) original time series
-    df_orig_today, df_orig_full, data = get_orig_timeseries(
-        client, data, run_transformation)
+    data = get_orig_timeseries(client, data, run_transformation)
 
     # STEP 2: Run transformations
-    df_new = run_transformation(data)#run_transformation(df_orig_today, data)
+    df_new = run_transformation(data)
 
-    # STEP 3: Insert transformed signal for new time range
+    # STEP 3: Insert transformed signal(s) for new time range (done simultaneously for multiple time series outputs)
     client.time_series.data.insert_dataframe(df_new)
 
     # Store original signal (for backfilling)
-    return df_orig_full
+    return data["ts_input_backfill"]
 
 
 if __name__ == '__main__':
     from initialize import initialize_client
     from dotenv import load_dotenv
     import os
-    import re
 
     cdf_env = "dev"
     if cdf_env not in ["dev", "test", "prod"]:
@@ -59,19 +57,19 @@ if __name__ == '__main__':
     load_dotenv("../../handler-data.env")
 
     in_name = "VAL_11-LT-95034A:X.Value"
-    out_name = "VAL_11-LT-95034A:X.CDF.Dummy"#"VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"
+    out_name = "VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"
 
     tank_volume = 1400
     derivative_value_excl = 0.002
     # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    func_name = re.search("[^/]+$", os.getcwd().replace("\\","/"))[0]
+    func_name = "avg_drainage_rate"
 
     data_dict = {'tot_days': 0, 'tot_minutes': 15,  # convert date to str to make it JSON serializable
                  'ts_input_name': in_name, 'ts_output_name': out_name,
                  'derivative_value_excl': derivative_value_excl, 'tank_volume': tank_volume,
                  # NB: change dataset id when going to dev/test/prod!
                  'cdf_env': cdf_env, 'dataset_id': int(os.getenv("DATASET_ID")),
-                 'backfill': False, 'backfill_days': 10,
+                 'backfill': False, 'backfill_days': 7,
                  'function_name': func_name,
                  'lowess_frac': 0.001, 'lowess_delta': 0.01}
 
