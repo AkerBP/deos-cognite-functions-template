@@ -1,17 +1,17 @@
 import numpy as np
 import pandas as pd
 
-def calculation(data, ts_0, ts_1, ts_ipc):
+def calc_wasted_energy(data, ts_0, ts_1, ts_ipc):
     """Compute time series of wasted energy.
 
     Args:
-        data (dict): parameters and data for Cognite Function
+        data (dict): calculation-specfic parameters for Cognite Function
         ts_0 (pd.DataFrame): time series input 'VAL_11-XT-95067B:Z.X.Value'
         ts_1 (pd.DataFrame | int): time series or constant
         ts_ipc (pd.DataFrame): time series calculated by cf_ideal-power-consumption, 'VAL_11-PT-92363B:X.Value'
 
     Returns:
-        list: time series of ideal power consumption
+        pd.DataFrame: data points of output time series
     """
     wasted_energy = pd.Series(0., index=ts_0.index)
     if isinstance(ts_1, float) or isinstance(ts_1, int):
@@ -25,5 +25,5 @@ def calculation(data, ts_0, ts_1, ts_ipc):
 
     wasted_energy[zero_condition] = ts1_masked - ts_ipc_masked
 
-    return [wasted_energy]
+    return wasted_energy
 
