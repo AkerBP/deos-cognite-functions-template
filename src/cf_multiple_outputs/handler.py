@@ -1,47 +1,42 @@
 import os
 import sys
-from cognite.client.data_classes import TimeSeries
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import pytz
-import time
-from datetime import datetime, timedelta
 
 parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
-from handler_utils import get_orig_timeseries, get_ts_df, align_time_series
-from transformation import run_transformation
+from handler_utils import PrepareTimeSeries #get_orig_timeseries
+from transformation_utils import RunTransformations
+from transformation import *
 
-def handle(client, data_dict):
-    """Calculate drainage rate per timestamp and per day from tank,
-    using Lowess filtering on volume percentage data from the tank.
-    Large positive derivatives of signal are excluded to ignore
-    human interventions (filling) of tank.
-    Data of drainage rate helps detecting leakages.
+def handle(client, data):
+    """Main entry point for Cognite Functions fetching input time series,
+    transforming the signals, and storing the output in new time series.
 
     Args:
         client (CogniteClient): client used to authenticate cognite session
-        data_dict (dict): data input to the handle
+        data (dict): data input to the handle
 
     Returns:
-        pd.DataFrame: dataframe with drainage rate and trend (derivative)
+        str: jsonified data from input signals spanning backfilling period
     """
+    calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
-    data_dict = get_orig_timeseries(client, data_dict, run_transformation)
-    ts_df = get_ts_df(data_dict)
-    ts_df = align_time_series(ts_df, data_dict) # align input time series to cover same time period
+    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    data = PrepTS.get_orig_timeseries(eval(calculation))
+    ts_df = PrepTS.get_ts_df()
+    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
 
     # STEP 2: Run transformations
-    df_new = run_transformation(data_dict, ts_df)
-    # STEP 3: Insert transformed signal(s) for new time range (done simultaneously for multiple time series outputs)
-    client.time_series.data.insert_dataframe(df_new)
+    transform_timeseries = RunTransformations(data, ts_df)
+    # df_new = run_transformation(data, ts_df)
+    ts_out = transform_timeseries(eval(calculation))
+    # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
+    df_out = transform_timeseries.store_output_ts(ts_out)
+    client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return data_dict["ts_input_backfill"]
-
+    return data["ts_input_backfill"]
 
 if __name__ == '__main__':
     from initialize import initialize_client

@@ -1,3 +1,5 @@
+import sys
+import os
 from datetime import datetime, timedelta
 import time
 import pytz
@@ -9,52 +11,69 @@ import sys
 import ast
 import json
 
-class PrepareInputTimeSeries:
-    def __init__(self, inputs, client, data_dicts):
+# parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# if parent_path not in sys.path:
+#     sys.path.append(parent_path)
+
+from transformation_utils import RunTransformations
+
+class PrepareTimeSeries:
+    """Class to organize input time series and prepare output time series
+    for transformations with Cognite Functions.
+    """
+    def __init__(self, ts_inputs, ts_outputs, client, data_dicts):
         self.client = client
-        self.inputs = inputs
-        self.data_dicts = data_dicts
+        self.ts_inputs = ts_inputs
+        self.ts_outputs = ts_outputs
+        self.data = data_dicts
 
+    def update_ts(self, field, val=0):
+        if field == "ts_input":
+            self.data["ts_input"] = {name:{} for name in self.ts_inputs}
+        elif field == "ts_output":
+            self.data["ts_output"] = {name:{} for name in self.ts_outputs}
+        else:
+            self.data[field] = val
 
-    def get_orig_timeseries(self, client, data_dicts, transform_func):
+    def get_orig_timeseries(self, calc_func):
         """Get original time series signals used to compute new output signal from tranform_func
 
         Args:
-            client (CogniteClient): client to authenticate with cognite
-            data_dicts (dict): dictionary with input data and parameters used in transformation,
-                                including global properties and sub-dictionaries (e.g. key-values for specific time series)
-            transform_func (function): transformation function from run_transformation
+            calc_func (function): calculation that transforms time series.
+                                should take a data dictionary 'data' and
+                                list of time series dataframes 'ts_df' as input,
+                                i.e., calc_func(data, *ts_df)
 
         Returns:
             dict: updated data dictionaries
         """
+        client = self.client
+
         end_date = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)
         # from the start (00:00:00) of end_date
         start_date = pd.to_datetime(end_date.date())
-        data_dicts["start_time"] = start_date
-        data_dicts["end_time"] = end_date
+        self.data["start_time"] = start_date
+        self.data["end_time"] = end_date
         print(f"Timestamp.now: {end_date}")
 
-        ts_output = data_dicts["ts_output"]
+        ts_inputs = self.ts_inputs
+        ts_outputs = self.ts_outputs
 
-        for ts_out_name in ts_output.keys():
+        for ts_out_name in ts_outputs.keys():
             ts_leak = client.time_series.list(
                     name=ts_out_name).to_pandas()  # transformed time series (leakage)
             # Check if transformed time series already exists
-            ts_output[ts_out_name]["exists"] = not ts_leak.empty
+            ts_outputs[ts_out_name]["exists"] = not ts_leak.empty
 
-        my_schedule_id, all_calls = get_schedules_and_calls(client, data_dicts)
-        data_dicts["schedule_id"] = my_schedule_id
-        data_dicts["scheduled_calls"] = all_calls
+        my_schedule_id, all_calls = self.get_schedules_and_calls()
+        self.data["schedule_id"] = my_schedule_id
+        self.data["scheduled_calls"] = all_calls
 
         # Create new time series, if not already exists
-        create_timeseries(client, data_dicts)
+        self.create_timeseries()
 
-        data_dicts["ts_input_today"] = {ts_name: [] for ts_name in data_dicts["ts_input"].keys()} # stores original signal only for current date
-        data_dicts["ts_input_backfill"] = {ts_name: [] for ts_name in data_dicts["ts_input"].keys()} # stores original signal for entire backfill period (to be compared when doing next backfilling)
-
-        ts_inputs = data_dicts['ts_input']
-        ts_outputs = data_dicts['ts_output']
+        self.data["ts_input_today"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal only for current date
+        self.data["ts_input_backfill"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal for entire backfill period (to be compared when doing next backfilling)
 
         ts_output_names = [name for name in ts_outputs.keys()]
         if len(ts_inputs.keys()) > len(ts_outputs.keys()): # multiple input time series used to compute one output time series
@@ -76,35 +95,46 @@ class PrepareInputTimeSeries:
             backfill_dates = []
             # TODO: Change to 23 hours and 45 minutes.
             # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-            if end_date.hour == 13 and end_date.minute >= 30 and end_date.minute < 45 and data_out["exists"]:
-                ts_input_backfill, backfill_dates = check_backfilling(client, data_dicts, ts_in)
+            if end_date.hour == self.data["backfill_hour"] and \
+            end_date.minute >= self.data["backfill_min_start"] and \
+            end_date.minute < self.data["backfill_min_end"] \
+            and data_out["exists"]:
+                ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
 
-            data_dicts["ts_input_backfill"][ts_in] = ts_input_backfill
+            self.data["ts_input_backfill"][ts_in] = ts_input_backfill
             # STEP 4: Perform backfilling on dates with discrepancies in datapoints
             for date in backfill_dates:
-                data_dicts["start_time"] = pd.to_datetime(date)
-                data_dicts["end_time"] = pd.to_datetime(date+timedelta(days=1))
+                self.data["start_time"] = pd.to_datetime(date)
+                self.data["end_time"] = pd.to_datetime(date+timedelta(days=1))
 
                 for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
-                    df_orig_today = retrieve_orig_ts(client, data_dicts, ts_in, ts_out)
-                    data_dicts["ts_input_today"][ts_in] = df_orig_today[ts_in]
+                    df_orig_today = self.retrieve_orig_ts(ts_in, ts_out)
+                    self.data["ts_input_today"][ts_in] = df_orig_today[ts_in]
 
-                df_new = transform_func(data_dicts)
+                ts_df = self.get_ts_df()
+                ts_df = self.align_time_series(ts_df)
 
-                client.time_series.data.insert_dataframe(df_new)
+                transform_timeseries = RunTransformations(self.data, ts_df)
+                ts_out = transform_timeseries(calc_func)
+                df_out = transform_timeseries.store_output_ts(ts_out)
+
+                client.time_series.data.insert_dataframe(df_out)
 
         # STEP 5: After backfilling, retrieve original signal for intended transformation period (i.e., today)
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
-            data_dicts["start_time"] = start_date
-            data_dicts["end_time"] = end_date
+            self.data["start_time"] = start_date
+            self.data["end_time"] = end_date
 
-            df_orig_today = retrieve_orig_ts(client, data_dicts, ts_in, ts_out)
-            data_dicts["ts_input_today"][ts_in] = df_orig_today[ts_in]
+            df_orig_today = self.retrieve_orig_ts(ts_in, ts_out)
+            self.data["ts_input_today"][ts_in] = df_orig_today[ts_in]
 
-        return data_dicts
+        return self.data
 
 
-    def get_schedules_and_calls(client, data):
+    def get_schedules_and_calls(self):
+        data = self.data
+        client = self.client
+
         my_func = client.functions.retrieve(external_id=data["function_name"])
         try:
             my_schedule_id = client.functions.schedules.list(
@@ -114,16 +144,19 @@ class PrepareInputTimeSeries:
         except:  # No schedule exist
             my_schedule_id = None
             all_calls = pd.DataFrame()
+
         return my_schedule_id, all_calls
 
 
-    def create_timeseries(client, data):
+    def create_timeseries(self):
+        client = self.client
+        data = self.data
         ts_input = data["ts_input"]
         ts_output = data["ts_output"]
 
         if len(ts_input.keys()) > len(ts_output.keys()): # Assume all input time series are from same asset
             asset_ids = [client.time_series.list(name=list(ts_input.keys())[0])[0].asset_id]
-        else: # same num input and output signals -->
+        else: # same num input and output signals --> output time series linked to asset of associated input time series
             asset_ids = [client.time_series.list(name=ts_name)[0].asset_id for ts_name in ts_input]
 
         for ts_out_name, asset_id in zip(ts_output.keys(), asset_ids):
@@ -138,19 +171,23 @@ class PrepareInputTimeSeries:
                 client.time_series.create(TimeSeries(
                     name=ts_out_name, external_id=ts_out_name, data_set_id=data['dataset_id'], asset_id=asset_id))
 
+        return asset_ids
 
-    def retrieve_orig_ts(client, data_dicts, ts_in, ts_out):
-        data_in = data_dicts["ts_input"][ts_in]
-        data_out = data_dicts["ts_output"][ts_out]
+
+    def retrieve_orig_ts(self, ts_in, ts_out):
+        client = self.client
+        data = self.data
+        data_in = self.ts_inputs[ts_in]
+        data_out = self.ts_outputs[ts_out]
         ts_orig_extid = data_in["ts_orig_extid"]
 
-        start_date = data_dicts["start_time"]
-        end_date = data_dicts["end_time"]
+        start_date = data["start_time"]
+        end_date = data["end_time"]
         # If no data in output time series, run cognite function from first available date of original time series until date with last updated datapoint
         if not data_out["exists"]:
             first_date_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                             aggregates="average",
-                                                            granularity=f"{data_dicts['granularity']}s",
+                                                            granularity=f"{data['granularity']}s",
                                                             limit=1).to_pandas().index[0]
             start_date = first_date_orig
 
@@ -159,7 +196,7 @@ class PrepareInputTimeSeries:
         while df.empty:
             ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                     aggregates="average",
-                                                    granularity=f"{data_dicts['granularity']}s",
+                                                    granularity=f"{data['granularity']}s",
                                                     start=pd.to_datetime(
                                                         start_date),
                                                     end=pd.to_datetime(
@@ -179,7 +216,7 @@ class PrepareInputTimeSeries:
                         ).total_seconds()  # tot seconds since epoch'
         return df
 
-    def align_time_series(ts_df, data):
+    def align_time_series(self, ts_df):
         latest_start_date = np.max([ts_df[i].index[0] for i in range(len(ts_df))])
         earliest_end_date = np.min([ts_df[i].index[-1] for i in range(len(ts_df))])
 
@@ -187,14 +224,14 @@ class PrepareInputTimeSeries:
             ts_df[i] = ts_df[i][ts_df[i].index >= latest_start_date]
             ts_df[i] = ts_df[i][ts_df[i].index <= earliest_end_date]
 
-        time_index = pd.date_range(start=latest_start_date, end=earliest_end_date, freq=f"{data['granularity']}s")
+        time_index = pd.date_range(start=latest_start_date, end=earliest_end_date, freq=f"{self.data['granularity']}s")
 
         for i in range(len(ts_df)):
             ts_df[i] = ts_df[i].reindex(time_index, copy=False) # missing internal dates are filled with nan
 
         return ts_df
 
-    def get_ts_df(data):
+    def get_ts_df(self):
         """List input time series' as dataframes
 
         Args:
@@ -203,32 +240,33 @@ class PrepareInputTimeSeries:
         Returns:
             (list): list of time series dataframes
         """
-        ts_data = data["ts_input_today"]
+        ts_data = self.data["ts_input_today"]
         ts_data = [ts_data[name] for name in ts_data]
         return ts_data
 
-    def check_backfilling(client, data_dicts, ts_input_name):
+    def check_backfilling(self, ts_input_name, testing=False):
         """Runs a backfilling for last data["backfill_days"] days of input time series.
 
         Args:
-            client (Cognite.Client): client for authentication with Cognite
-            data (dict): input data to Cognite Function
+            ts_input_name (str)
 
         Returns:
-            (dict): jsonified version of original signal (last 7 day period)
+            (dict): jsonified version of original signal (last self.data['backfill_days'] days period)
         """
-        data = data_dicts["ts_input"][ts_input_name]
-        ts_orig_extid = data["ts_orig_extid"]
+        client = self.client
+        data = self.data
+        ts_input = data["ts_input"][ts_input_name]
+        ts_orig_extid = ts_input["ts_orig_extid"]
 
-        end_date = data_dicts["end_time"]
-        start_date = end_date - timedelta(days=data_dicts["backfill_days"])
+        end_date = data["end_time"]
+        start_date = end_date - timedelta(days=data["backfill_days"])
         # data['backfill'] = True
         backfill_dates = []
 
         # Search through prev 7 days of original time series for backfilling
         ts_orig_all = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                     aggregates="average",
-                                                    granularity=f"{data_dicts['granularity']}s",
+                                                    granularity=f"{data['granularity']}s",
                                                     start=start_date,
                                                     end=pd.to_datetime(
                                                         end_date),
@@ -238,32 +276,31 @@ class PrepareInputTimeSeries:
         ts_orig_all = ts_orig_all.rename(
             columns={ts_orig_extid + "|average": ts_input_name})
 
-        my_func = client.functions.retrieve(external_id=data_dicts["function_name"])
-        scheduled_calls = data_dicts["scheduled_calls"]
+        my_func = client.functions.retrieve(external_id=data["function_name"])
+        scheduled_calls = data["scheduled_calls"]
 
         # ----------------
         now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
         # ----------------
         start_time = datetime(now.year, now.month, now.day-1,
-                            13, 30)  # -1 to get previous day
+                            data["backfill_hour"], data["backfill_min_start"])  # -1 to get previous day
         start_time = pytz.utc.localize(
             start_time).timestamp() * 1000  # convert to local time
-        end_time = datetime(now.year, now.month, now.day-1, 13, 45)
+        end_time = datetime(now.year, now.month, now.day-1, data["backfill_hour"], data["backfill_min_end"])
         end_time = pytz.utc.localize(end_time).timestamp() * 1000
 
-        mask_start = scheduled_calls["scheduled_time"] >= start_time
-        mask_end = scheduled_calls["scheduled_time"] < end_time
-
         try:
+            mask_start = scheduled_calls["scheduled_time"] >= start_time
+            mask_end = scheduled_calls["scheduled_time"] < end_time
             last_backfill_id = scheduled_calls[mask_start & mask_end]["id"].iloc[0]
         except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
             print(
-                f"No schedule from yesterday. Can't backfill. Returning original signal from last {data_dicts['backfill_days']} days.")
+                f"No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
             return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
 
         last_backfill_call = my_func.retrieve_call(id=last_backfill_id)
         print(
-            f"Retrieving scheduled call from yesterday with id {last_backfill_id}. Backfilling time series for last {data_dicts['backfill_days']} days ...")
+            f"Retrieving scheduled call from yesterday with id {last_backfill_id}. Backfilling time series for last {data['backfill_days']} days ...")
 
         output_dict = ast.literal_eval(last_backfill_call.get_response())[
             ts_input_name]
@@ -316,6 +353,9 @@ class PrepareInputTimeSeries:
             print(f"Backfilling dates with DELETED data: {decreased_dates.values}")
             backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
+        if testing:
+            return ts_orig_all[[ts_input_name]].to_json(), backfill_dates, \
+                    num_dates_old, num_dates_new
         # return recent original signal
         return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
 
