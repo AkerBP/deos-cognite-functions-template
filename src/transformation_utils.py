@@ -29,7 +29,6 @@ class RunTransformations:
 
         Args:
             ts_output (list): datapoints for output time series (typically result from calling the class)
-            data (dict): input parameters for Cognite Function
 
         Returns:
             pd.DataFrame: dataframes of output time series
@@ -38,7 +37,7 @@ class RunTransformations:
         out_df = pd.DataFrame()
 
         for ts_out_name, ts_out_val in zip(data["ts_output"].keys(), ts_output):
-            added_df = pd.DataFrame({ts_out_name: ts_out_val})
+            added_df = pd.DataFrame({ts_out_name: ts_out_val}, index=ts_out_val.index)
             out_df = pd.concat([out_df, added_df], axis=1) # concatenate on dates
 
         out_df.index = pd.to_datetime(out_df.index)
