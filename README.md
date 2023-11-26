@@ -106,7 +106,7 @@ The subfolder `cf_*myname*` contains all files specific for your Cognite Functio
 def handle(client, data):
     calculation = data["calculation_function"]
 
-    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
     data = PrepTS.get_orig_timeseries(eval(calculation))
     ts_df = PrepTS.get_ts_df()
     ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
@@ -119,7 +119,7 @@ def handle(client, data):
 
     return data["ts_input_backfill"]
 ```
-  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time    series inputs. ***NB:*** Make sure that the time series in `ts_in` are listed in correct order according to the calculations performed in `calculation`.
+  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time    series inputs. ***NB:*** Make sure that the names of the input time series, provided in `data["ts_input_names"]`, are listed in correct order according to the calculations performed in `calculation`. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
 - **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should return a pandas.Series object and follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
