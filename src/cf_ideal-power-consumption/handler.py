@@ -22,7 +22,7 @@ def handle(client, data):
     """
     calculation = eval(f"transformation.{data['calculation_function']}")
     # STEP 1: Load (and backfill) and organize input time series'
-    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
     data = PrepTS.get_orig_timeseries(calculation)
     ts_df = PrepTS.get_ts_df()
     ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
