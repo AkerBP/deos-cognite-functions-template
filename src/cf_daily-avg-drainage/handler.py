@@ -82,8 +82,8 @@ if __name__ == '__main__':
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'backfill_days': backfill_days,
-            'backfill_hour': 8, # backfilling to be scheduled at last hour of day as default
-            'backfill_min_start': 45, 'backfill_min_end': 45 + int(cron_interval_min),
+            'backfill_hour': 10, # backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': 10, 'backfill_min_end': 10 + int(cron_interval_min),
             'calc_params': {
                 'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
                 'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta

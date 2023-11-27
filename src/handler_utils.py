@@ -92,7 +92,7 @@ class PrepareTimeSeries:
 
             data_in["ts_orig_extid"] = ts_orig.external_id[0]
 
-            ts_input_backfill = {ts_in: str(json.dumps(None))}
+            ts_input_backfill = str(json.dumps(None))
 
             # STEP 3: Identify backfill candidates
             backfill_dates = []
@@ -104,7 +104,7 @@ class PrepareTimeSeries:
             and data_out["exists"]:
                 ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
 
-            self.data["ts_input_backfill"][ts_in] = ts_input_backfill[ts_in]
+            self.data["ts_input_backfill"][ts_in] = ts_input_backfill
             # STEP 4: Perform backfilling on dates with discrepancies in datapoints
             for date in backfill_dates:
                 self.data["start_time"] = pd.to_datetime(date)
@@ -354,10 +354,10 @@ class PrepareTimeSeries:
             backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
         if testing:
-            return ts_orig_all[[ts_input_name]].to_json(), backfill_dates, \
+            return ts_orig_all[ts_input_name].to_json(), backfill_dates, \
                     num_dates_old, num_dates_new
         # return recent original signal
-        return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
+        return ts_orig_all[ts_input_name].to_json(), backfill_dates
 
 
 if __name__ == "__main__":
