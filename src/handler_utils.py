@@ -21,17 +21,20 @@ class PrepareTimeSeries:
     """Class to organize input time series and prepare output time series
     for transformations with Cognite Functions.
     """
-    def __init__(self, ts_inputs, ts_outputs, client, data_dicts):
+    def __init__(self, ts_input_names, ts_output_names, client, data_dicts):
         self.client = client
-        self.ts_inputs = ts_inputs
-        self.ts_outputs = ts_outputs
+        self.ts_input_names = ts_input_names
+        self.ts_output_names = ts_output_names
         self.data = data_dicts
+
+        self.update_ts("ts_input")
+        self.update_ts("ts_output")
 
     def update_ts(self, field, val=0):
         if field == "ts_input":
-            self.data["ts_input"] = {name:{} for name in self.ts_inputs}
+            self.data["ts_input"] = {name:{} for name in self.ts_input_names}
         elif field == "ts_output":
-            self.data["ts_output"] = {name:{} for name in self.ts_outputs}
+            self.data["ts_output"] = {name:{} for name in self.ts_output_names}
         else:
             self.data[field] = val
 
@@ -56,8 +59,8 @@ class PrepareTimeSeries:
         self.data["end_time"] = end_date
         print(f"Timestamp.now: {end_date}")
 
-        ts_inputs = self.ts_inputs
-        ts_outputs = self.ts_outputs
+        ts_inputs = self.data["ts_input"]
+        ts_outputs = self.data["ts_output"]
 
         for ts_out_name in ts_outputs.keys():
             ts_leak = client.time_series.list(
@@ -89,7 +92,7 @@ class PrepareTimeSeries:
 
             data_in["ts_orig_extid"] = ts_orig.external_id[0]
 
-            ts_input_backfill = str(json.dumps(None))
+            ts_input_backfill = {ts_in: str(json.dumps(None))}
 
             # STEP 3: Identify backfill candidates
             backfill_dates = []
@@ -101,7 +104,7 @@ class PrepareTimeSeries:
             and data_out["exists"]:
                 ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
 
-            self.data["ts_input_backfill"][ts_in] = ts_input_backfill
+            self.data["ts_input_backfill"][ts_in] = ts_input_backfill[ts_in]
             # STEP 4: Perform backfilling on dates with discrepancies in datapoints
             for date in backfill_dates:
                 self.data["start_time"] = pd.to_datetime(date)
@@ -177,8 +180,8 @@ class PrepareTimeSeries:
     def retrieve_orig_ts(self, ts_in, ts_out):
         client = self.client
         data = self.data
-        data_in = self.ts_inputs[ts_in]
-        data_out = self.ts_outputs[ts_out]
+        data_in = self.data["ts_input"][ts_in]
+        data_out = self.data["ts_output"][ts_out]
         ts_orig_extid = data_in["ts_orig_extid"]
 
         start_date = data["start_time"]
@@ -292,7 +295,7 @@ class PrepareTimeSeries:
             last_backfill_id = scheduled_calls[mask_start & mask_end]["id"].iloc[0]
         except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
             print(
-                f"No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
+                f"Input {ts_input_name}: No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
             return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
 
         last_backfill_call = my_func.retrieve_call(id=last_backfill_id)

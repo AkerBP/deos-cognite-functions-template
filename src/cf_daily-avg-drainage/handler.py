@@ -25,7 +25,7 @@ def handle(client, data):
     """
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
-    PrepTS = PrepareTimeSeries(data["ts_input"], data["ts_output"], client, data)
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
     data = PrepTS.get_orig_timeseries(eval(calculation))
     ts_df = PrepTS.get_ts_df()
     ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
@@ -38,6 +38,7 @@ def handle(client, data):
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
+    print("A: ", data["ts_input_backfill"])
     return data["ts_input_backfill"]
 
 
@@ -74,15 +75,15 @@ if __name__ == '__main__':
     lowess_frac = 0.001
     lowess_delta = 0.01
 
-    data_dict = {'ts_input':{name:{} for name in ts_input_names}, # empty dictionary for each time series input
-            'ts_output':{name:{} for name in ts_output_names},
+    data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
+            'ts_output_names':ts_output_names,
             'function_name': f"cf_{function_name}",
             'calculation_function': f"calc_{calculation_function}",
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'backfill_days': backfill_days,
-            'backfill_hour': 23, # backfilling to be scheduled at last hour of day as default
-            'backfill_min_start': 0, 'backfill_min_end': int(cron_interval_min),
+            'backfill_hour': 8, # backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': 45, 'backfill_min_end': 45 + int(cron_interval_min),
             'calc_params': {
                 'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
                 'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta
