@@ -90,7 +90,10 @@ class PrepareTimeSeries:
             ts_orig = client.time_series.list(
                 name=ts_in).to_pandas()  # original time series (vol percentage)
 
-            data_in["ts_orig_extid"] = ts_orig.external_id[0]
+            try:
+                data_in["ts_orig_extid"] = ts_orig.external_id[0]
+            except:
+                raise KeyError(f"Input time series {ts_in} does not exist.")
 
             ts_input_backfill = str(json.dumps(None))
 
@@ -282,11 +285,16 @@ class PrepareTimeSeries:
         # ----------------
         now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
         # ----------------
-        start_time = datetime(now.year, now.month, now.day-1,
+
+        if testing: # when testing backfilling, we only move some minutes back in time, not an entire day
+            backfill_day = now.day
+        else:
+            backfill_day = now.day-1
+        start_time = datetime(now.year, now.month, backfill_day,
                             data["backfill_hour"], data["backfill_min_start"])  # -1 to get previous day
         start_time = pytz.utc.localize(
             start_time).timestamp() * 1000  # convert to local time
-        end_time = datetime(now.year, now.month, now.day-1, data["backfill_hour"], data["backfill_min_end"])
+        end_time = datetime(now.year, now.month, backfill_day, data["backfill_hour"], data["backfill_min_end"])
         end_time = pytz.utc.localize(end_time).timestamp() * 1000
 
         try:
@@ -354,7 +362,7 @@ class PrepareTimeSeries:
             backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
         if testing:
-            return ts_orig_all[ts_input_name].to_json(), backfill_dates, \
+            return ts_orig_all, yesterday_df, backfill_dates, \
                     num_dates_old, num_dates_new
         # return recent original signal
         return ts_orig_all[ts_input_name].to_json(), backfill_dates

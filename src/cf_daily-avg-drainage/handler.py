@@ -38,7 +38,6 @@ def handle(client, data):
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    print("A: ", data["ts_input_backfill"])
     return data["ts_input_backfill"]
 
 

@@ -15,8 +15,7 @@ def calc_ideal_power_consumption(data, ts_0, ts_1, ts_2, ts_3):
         pd.Series: data points of output time series
     """
     ts_inputs = [ts_0, ts_1, ts_2, ts_3]
-
-    ideal_power_consumption = pd.Series(0., index=ts_inputs[0].index)
+    ideal_power_consumption = pd.DataFrame(np.zeros(len(ts_0)), index=ts_inputs[0].index)
     zero_condition = ts_inputs[3] > 0
 
     ts0_masked = ts_inputs[0][zero_condition]
@@ -25,5 +24,5 @@ def calc_ideal_power_consumption(data, ts_0, ts_1, ts_2, ts_3):
 
     ideal_power_consumption[zero_condition] = ((ts0_masked / 3600) * ((ts1_masked * 1.2) - ts2_masked) * 10**5 / 1000) / (0.9 * 0.93 * 0.775)
 
-    return ideal_power_consumption
+    return ideal_power_consumption.squeeze() # from DataFrame to Series
 

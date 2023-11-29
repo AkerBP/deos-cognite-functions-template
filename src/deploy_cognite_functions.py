@@ -97,8 +97,11 @@ def list_scheduled_calls(data_dict, client):
     """
     import time
     my_func = client.functions.retrieve(external_id=data_dict["function_name"])
-    my_schedule_id = client.functions.schedules.list(
+    try:
+        my_schedule_id = client.functions.schedules.list(
                 name=data_dict["function_name"]).to_pandas().id[0]
+    except:
+        raise NotImplementedError(f"No schedule for function {data_dict['function_name']} exists.")
     all_calls = my_func.list_calls(
                 schedule_id=my_schedule_id, limit=-1).to_pandas()
     while all_calls.empty: # wait for first call
