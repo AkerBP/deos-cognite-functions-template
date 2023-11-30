@@ -1,23 +1,23 @@
 import zipfile
 import os
 import pandas as pd
+from typing import Tuple
 
+from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
 from initialize import initialize_client
 
-def deploy_cognite_functions(data_dict, client, cron_interval,
-                             single_call=True,
-                             scheduled_call=False):
+def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interval: str,
+                             single_call=True, scheduled_call=False):
     """General procedure to deploy Cognite Functions through schedule,
     using zip-file approach to link data to a designated dataset
 
     Args:
         data_dict (list): Dictionary with input data and parameters for the Cognite Function
-        cdf_env (str): CDF environment to deploy to ("dev", "test" or "prod")
+        client (CogniteClient): instantiated Cognite Client
         cron_interval (str): Minute-interval to run schedule on
-        single_call (bool, optional): If running a single call to the Cognite Function. Done for first write of data to output time series. Defaults to True.
+        single_call (bool, optional): If running a single call to the Cognite Function. This is necessary for first transformation of input time series. Defaults to True.
         scheduled_call (bool, optional): If running Cognite Function on schedule. Defaults to False.
-        testing (bool, optional): If running testing or not
 
     Raises:
         FileNotFoundError: If zip-file connected to associated dataset is not found.
@@ -84,16 +84,16 @@ def deploy_cognite_functions(data_dict, client, cron_interval,
         )
         print("... Done")
 
-def list_scheduled_calls(data_dict, client):
+def list_scheduled_calls(data_dict: dict, client: CogniteClient) -> Tuple[int, pd.DataFrame]:
     """List all scheduled calls to Cognite Function
 
     Args:
-        data_dict (list): Dictionary with input data and parameters for the Cognite Function
+        data_dict (dict): Dictionary with input data and parameters for the Cognite Function
         client (CogniteClient): client to authenticate with Cognite
 
     Returns:
         my_schedule_id (int): id of deployed schedule
-        all_calls (pd.DataFrame): table of all calls
+        all_calls (pd.DataFrame): table of all calls made
     """
     import time
     my_func = client.functions.retrieve(external_id=data_dict["function_name"])
