@@ -5,11 +5,12 @@ parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
+from cognite.client._cognite_client import CogniteClient
 from handler_utils import PrepareTimeSeries #get_orig_timeseries
 from transformation_utils import RunTransformations
 from transformation import *
 
-def handle(client, data):
+def handle(client: CogniteClient, data: dict) -> str:
     """Main entry point for Cognite Functions fetching input time series,
     transforming the signals, and storing the output in new time series.
 
@@ -53,22 +54,26 @@ if __name__ == '__main__':
     client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    in_name = "VAL_11-LT-95007A:X.Value"
-    out_name = "VAL_11-LT-95007A:X.CDF.D.AVG.LeakValue"
-
+    ts_input_names = ["VAL_11-XT-95067B:Z.X.Value", 87.8, "TEST_IdealPowerConsumption"]
+    ts_output_names = ["TEST_WastedEnergy"]
+    # ts_output_names = ["VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue"]
     tank_volume = 1400
     derivative_value_excl = 0.002
     # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    func_name = "VAL_11-LT-95007A"
+    function_name = "wasted-energy"
+    calc_func = "wasted_energy"
 
-    data_dict = {'tot_days': 0, 'tot_minutes': 15,  # convert date to str to make it JSON serializable
-                 'ts_input_name': in_name, 'ts_output_name': out_name,
-                 'derivative_value_excl': derivative_value_excl, 'tank_volume': tank_volume,
-                 # NB: change dataset id when going to dev/test/prod!
-                 'cdf_env': cdf_env, 'dataset_id': int(os.getenv("DATASET_ID")),
-                 'backfill': False, 'backfill_days': 7,
-                 'function_name': func_name,
-                 'lowess_frac': 0.001, 'lowess_delta': 0.01}
+    data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
+            'ts_output_names':ts_output_names,
+            'granularity':60, # granularity used to fetch input time series, given in seconds
+            'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
+            'dataset_id': 1832663593546318,
+            'backfill': False, 'backfill_days': 3,
+            'function_name': f"cf_{function_name}",
+            'calculation_function': f"calc_{calc_func}",
+            'calc_params': {},
+            'backfill_hour': 10, 'backfill_min_start': 0, 'backfill_min_end': 15,
+            'lowess_frac': 0.001, 'lowess_delta': 0.01} # NB: change dataset id when going to dev/test/prod!
 
-    # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
+    # client.time_series.delete(external_id="VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue")
     new_df = handle(client, data_dict)

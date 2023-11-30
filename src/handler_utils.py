@@ -1,12 +1,13 @@
 import sys
 import os
 from datetime import datetime, timedelta
-import time
+from typing import Tuple
 import pytz
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from cognite.client.data_classes import TimeSeries
+from cognite.client._cognite_client import CogniteClient
 import sys
 import ast
 import json
@@ -21,7 +22,16 @@ class PrepareTimeSeries:
     """Class to organize input time series and prepare output time series
     for transformations with Cognite Functions.
     """
-    def __init__(self, ts_input_names, ts_output_names, client, data_dicts):
+    def __init__(self, ts_input_names: list, ts_output_names: list,
+                 client: CogniteClient, data_dicts: dict):
+        """Provide client and data dictionary for deployment of Cognite Function
+
+        Args:
+            ts_input_names (list): names for input time series
+            ts_output_names (list): names for output time series
+            client (CogniteClient): instantiated CogniteClient
+            data_dicts (dict): data dictionary used for Cognite Function
+        """
         self.client = client
         self.ts_input_names = ts_input_names
         self.ts_output_names = ts_output_names
@@ -30,25 +40,34 @@ class PrepareTimeSeries:
         self.update_ts("ts_input")
         self.update_ts("ts_output")
 
-    def update_ts(self, field, val=0):
+    def update_ts(self, field: str, val=None):
+        """Update provided field in data dictionary for Cognite Functions.
+
+        Args:
+            field (str): key in dictionary to update
+            val (optional): value assigned to the field. Defaults to None.
+        """
         if field == "ts_input":
-            self.data["ts_input"] = {name:{} for name in self.ts_input_names}
+            self.data["ts_input"] = {str(name):{"exists":isinstance(name,str)} for name in self.ts_input_names} # include boolean to check if input is an already existing time series from CDF
         elif field == "ts_output":
             self.data["ts_output"] = {name:{} for name in self.ts_output_names}
         else:
             self.data[field] = val
 
-    def get_orig_timeseries(self, calc_func):
-        """Get original time series signals used to compute new output signal from tranform_func
+    def get_orig_timeseries(self, calc_func) -> dict:
+        """Get original time series signals used to compute new output signal,
+        performing backfilling if scheduled.
 
         Args:
             calc_func (function): calculation that transforms time series.
                                 should take a data dictionary 'data' and
                                 list of time series dataframes 'ts_df' as input,
-                                i.e., calc_func(data, *ts_df)
+                                i.e., calc_func(data, *ts_df), and return a
+                                pd.Series object of transformed data points
+                                for a given date range.
 
         Returns:
-            dict: updated data dictionaries
+            (dict): updated data dictionaries
         """
         client = self.client
 
@@ -83,16 +102,24 @@ class PrepareTimeSeries:
             ts_output_names = ts_output_names*len(ts_inputs.keys())
 
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+
+            #TODO: CHECK FIRST IF INPUT DATA IS TIME SERIES OR SEPARATELY PROVIDED SCALAR/ARRAY
             data_in = ts_inputs[ts_in]
             data_out = ts_outputs[ts_out]
+
+            if not data_in["exists"]:
+                continue # skip to next input
 
             # STEP 2: Retrieve time series and function schedules
             ts_orig = client.time_series.list(
                 name=ts_in).to_pandas()  # original time series (vol percentage)
 
-            data_in["ts_orig_extid"] = ts_orig.external_id[0]
+            try:
+                data_in["ts_orig_extid"] = ts_orig.external_id[0]
+            except:
+                raise KeyError(f"Input time series {ts_in} does not exist.")
 
-            ts_input_backfill = {ts_in: str(json.dumps(None))}
+            ts_input_backfill = str(json.dumps(None))
 
             # STEP 3: Identify backfill candidates
             backfill_dates = []
@@ -104,7 +131,7 @@ class PrepareTimeSeries:
             and data_out["exists"]:
                 ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
 
-            self.data["ts_input_backfill"][ts_in] = ts_input_backfill[ts_in]
+            self.data["ts_input_backfill"][ts_in] = ts_input_backfill
             # STEP 4: Perform backfilling on dates with discrepancies in datapoints
             for date in backfill_dates:
                 self.data["start_time"] = pd.to_datetime(date)
@@ -125,6 +152,10 @@ class PrepareTimeSeries:
 
         # STEP 5: After backfilling, retrieve original signal for intended transformation period (i.e., today)
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+            if not ts_inputs[ts_in]["exists"]:
+                self.data["ts_input_today"][ts_in] = float(ts_in)
+                continue # skip to next input
+
             self.data["start_time"] = start_date
             self.data["end_time"] = end_date
 
@@ -134,7 +165,15 @@ class PrepareTimeSeries:
         return self.data
 
 
-    def get_schedules_and_calls(self):
+    def get_schedules_and_calls(self) -> Tuple[int, pd.DataFrame]:
+        """Return ID of schedule that is currently running for this function,
+        and a list of all calls made to this schedule.
+
+        Returns:
+            (int): id of schedule
+            (pd.DataFrame): table of calls made
+        """
+
         data = self.data
         client = self.client
 
@@ -151,7 +190,12 @@ class PrepareTimeSeries:
         return my_schedule_id, all_calls
 
 
-    def create_timeseries(self):
+    def create_timeseries(self) -> list:
+        """Create Time Series object for output time series if not exist.
+
+        Returns:
+            list: asset ids of associated input time series
+        """
         client = self.client
         data = self.data
         ts_input = data["ts_input"]
@@ -177,7 +221,16 @@ class PrepareTimeSeries:
         return asset_ids
 
 
-    def retrieve_orig_ts(self, ts_in, ts_out):
+    def retrieve_orig_ts(self, ts_in: str, ts_out: str) -> pd.DataFrame:
+        """Return input time series over given date range, averaged over a given granularity.
+
+        Args:
+            ts_in (str): name of input time series
+            ts_out (str): name of output time series (to be produced)
+
+        Returns:
+            pd.DataFrame: input time series
+        """
         client = self.client
         data = self.data
         data_in = self.data["ts_input"][ts_in]
@@ -217,42 +270,58 @@ class PrepareTimeSeries:
 
         return df
 
-    def align_time_series(self, ts_df):
-        latest_start_date = np.max([ts_df[i].index[0] for i in range(len(ts_df))])
-        earliest_end_date = np.min([ts_df[i].index[-1] for i in range(len(ts_df))])
+    def align_time_series(self, ts_all: list) -> list:
+        """Align input time series to cover same data range.
+
+        Args:
+            ts_all (list): list of input time series (pd.DataFrame or scalars)
+
+        Returns:
+            (list): list of time series truncated by common dates
+        """
+        ts_df = [[i, ts] for i, ts in enumerate(ts_all) if not isinstance(ts, float)]
+        ts_scalars = [[i, ts] for i, ts in enumerate(ts_all) if isinstance(ts, float)]
+
+        latest_start_date = np.max([ts_df[i][1].index[0] for i in range(len(ts_df))])
+        earliest_end_date = np.min([ts_df[i][1].index[-1] for i in range(len(ts_df))])
 
         for i in range(len(ts_df)): # omit dates where some of time series have nan values
-            ts_df[i] = ts_df[i][ts_df[i].index >= latest_start_date]
-            ts_df[i] = ts_df[i][ts_df[i].index <= earliest_end_date]
+            ts_df[i][1] = ts_df[i][1][ts_df[i][1].index >= latest_start_date]
+            ts_df[i][1] = ts_df[i][1][ts_df[i][1].index <= earliest_end_date]
 
         time_index = pd.date_range(start=latest_start_date, end=earliest_end_date, freq=f"{self.data['granularity']}s")
 
+        ts_all = [0]*len(ts_all)
         for i in range(len(ts_df)):
-            ts_df[i] = ts_df[i].reindex(time_index, copy=False) # missing internal dates are filled with nan
+            ts_df[i][1] = ts_df[i][1].reindex(time_index, copy=False) # missing internal dates are filled with nan
+            ts_all[ts_df[i][0]] = ts_df[i][1]
 
-        return ts_df
+        for i in range(len(ts_scalars)):
+            ts_scalars[i][1] = pd.DataFrame(ts_scalars[i][1]*np.ones(len(ts_df[0][1])), index=ts_df[0][1].index) # can simply choose one of the dfs, they have the same index at this point anyway
+            ts_all[ts_scalars[i][0]] = ts_scalars[i][1]
 
-    def get_ts_df(self):
-        """List input time series' as dataframes
+        return ts_all
 
-        Args:
-            data (dict): input parameters for Cognite Function
+    def get_ts_df(self) -> list:
+        """List input time series' from CDF as dataframes and scalars as floats
 
         Returns:
-            (list): list of time series dataframes
+            (list): list of time series dataframes (and potentially scalars)
         """
         ts_data = self.data["ts_input_today"]
-        ts_data = [pd.DataFrame(ts_data[name]) for name in ts_data]
+        ts_data = [ts_data[name] if isinstance(ts_data[name], float) else pd.DataFrame(ts_data[name]) for name in ts_data]
         return ts_data
 
-    def check_backfilling(self, ts_input_name, testing=False):
-        """Runs a backfilling for last data["backfill_days"] days of input time series.
+    def check_backfilling(self, ts_input_name: str, testing: bool = False) -> Tuple[dict, list]:
+        """Runs a backfilling for last self.data["backfill_days"] days of input time series.
 
         Args:
-            ts_input_name (str)
+            ts_input_name (str): name of input time series
+            testing (bool): If running unit test or not. Defaults to False.
 
         Returns:
-            (dict): jsonified version of original signal (last self.data['backfill_days'] days period)
+            (dict): jsonified version of original signal for last self.data['backfill_days'] days
+            (list): dates to backfill data
         """
         client = self.client
         data = self.data
@@ -282,11 +351,16 @@ class PrepareTimeSeries:
         # ----------------
         now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
         # ----------------
-        start_time = datetime(now.year, now.month, now.day-1,
+
+        if testing: # when testing backfilling, we only move some minutes back in time, not an entire day
+            backfill_day = now.day
+        else:
+            backfill_day = now.day-1
+        start_time = datetime(now.year, now.month, backfill_day,
                             data["backfill_hour"], data["backfill_min_start"])  # -1 to get previous day
         start_time = pytz.utc.localize(
             start_time).timestamp() * 1000  # convert to local time
-        end_time = datetime(now.year, now.month, now.day-1, data["backfill_hour"], data["backfill_min_end"])
+        end_time = datetime(now.year, now.month, backfill_day, data["backfill_hour"], data["backfill_min_end"])
         end_time = pytz.utc.localize(end_time).timestamp() * 1000
 
         try:
@@ -296,7 +370,7 @@ class PrepareTimeSeries:
         except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
             print(
                 f"Input {ts_input_name}: No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
-            return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
+            return ts_orig_all[ts_input_name].to_json(), backfill_dates
 
         last_backfill_call = my_func.retrieve_call(id=last_backfill_id)
         print(
@@ -354,10 +428,10 @@ class PrepareTimeSeries:
             backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
         if testing:
-            return ts_orig_all[[ts_input_name]].to_json(), backfill_dates, \
+            return ts_orig_all, yesterday_df, backfill_dates, \
                     num_dates_old, num_dates_new
         # return recent original signal
-        return ts_orig_all[[ts_input_name]].to_json(), backfill_dates
+        return ts_orig_all[ts_input_name].to_json(), backfill_dates
 
 
 if __name__ == "__main__":

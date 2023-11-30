@@ -13,9 +13,9 @@ def calc_wasted_energy(data, ts_0, ts_1, ts_ipc):
     Returns:
         pd.Series: data points of output time series
     """
-    wasted_energy = pd.Series(0., index=ts_0.index)
+    wasted_energy = pd.DataFrame(np.zeros(len(ts_0)), index=ts_0.index)
     if isinstance(ts_1, float) or isinstance(ts_1, int):
-        ts_1 = pd.Series(ts_1, index=ts_0.index)
+        ts_1 = pd.DataFrame(ts_1*np.ones(len(ts_0)), index=ts_0.index)
 
     zero_condition = ts_0 > 0
 
@@ -25,5 +25,5 @@ def calc_wasted_energy(data, ts_0, ts_1, ts_ipc):
 
     wasted_energy[zero_condition] = ts1_masked - ts_ipc_masked
 
-    return wasted_energy
+    return wasted_energy.squeeze() # DataFrame --> Series
 

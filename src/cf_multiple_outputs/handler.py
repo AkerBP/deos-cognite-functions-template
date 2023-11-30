@@ -5,11 +5,12 @@ parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
+from cognite.client._cognite_client import CogniteClient
 from handler_utils import PrepareTimeSeries #get_orig_timeseries
 from transformation_utils import RunTransformations
 from transformation import *
 
-def handle(client, data):
+def handle(client: CogniteClient, data: dict) -> str:
     """Main entry point for Cognite Functions fetching input time series,
     transforming the signals, and storing the output in new time series.
 

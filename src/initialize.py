@@ -7,17 +7,19 @@ from cognite_authentication import set_cdf_client_connection
 from dotenv import load_dotenv
 
 
-def initialize_client(cdf_env: str, cache_token: bool, path_to_env=None):
+def initialize_client(cdf_env: str, cache_token: bool, path_to_env: str = None):
     """Initialize Cognite client for provided project
 
     Args:
         cdf_env (str): What CDF environment to connect to
+        cache_token (bool): Authentication trhough a local cache token
+        path_to_env (str): Relative path to .env file where authentication environment variables are defined. Defaults to None.
+
     Raises:
         Exception: No project assigned to this client
 
     Returns:
-        CogniteClient: instantiated Cognite client
-        TokenInspection: dictionary with status of client
+        (CogniteClient): instantiated Cognite client
     """
     # TENANT_ID = "3b7e4170-8348-4aa4-bfae-06a3e1867469"#"48d5043c-cf70-4c49-881c-c638f5796997"
     # CLIENT_ID = "779f2b3b-b599-401a-96aa-48bd29132a27"#"fab52bb5-9de2-4f9e-aefa-712da4b5fe00"

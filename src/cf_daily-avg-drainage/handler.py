@@ -5,23 +5,21 @@ parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
+from cognite.client._cognite_client import CogniteClient
 from handler_utils import PrepareTimeSeries #get_orig_timeseries
 from transformation_utils import RunTransformations
 from transformation import *
 
-def handle(client, data):
-    """Calculate drainage rate per timestamp and per day from tank,
-    using Lowess filtering on volume percentage data from the tank.
-    Large positive derivatives of signal are excluded to ignore
-    human interventions (filling) of tank.
-    Data of drainage rate helps detecting leakages.
+def handle(client: CogniteClient, data: dict) -> str:
+    """Main entry point for Cognite Functions fetching input time series,
+    transforming the signals, and storing the output in new time series.
 
     Args:
         client (CogniteClient): client used to authenticate cognite session
         data (dict): data input to the handle
 
     Returns:
-        pd.DataFrame: dataframe with drainage rate and trend (derivative)
+        str: jsonified data from input signals spanning backfilling period
     """
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
@@ -38,7 +36,6 @@ def handle(client, data):
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    print("A: ", data["ts_input_backfill"])
     return data["ts_input_backfill"]
 
 
@@ -82,8 +79,8 @@ if __name__ == '__main__':
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'backfill_days': backfill_days,
-            'backfill_hour': 8, # backfilling to be scheduled at last hour of day as default
-            'backfill_min_start': 45, 'backfill_min_end': 45 + int(cron_interval_min),
+            'backfill_hour': 10, # backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': 10, 'backfill_min_end': 10 + int(cron_interval_min),
             'calc_params': {
                 'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
                 'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta
