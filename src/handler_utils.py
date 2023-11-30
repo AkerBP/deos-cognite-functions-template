@@ -32,7 +32,7 @@ class PrepareTimeSeries:
 
     def update_ts(self, field, val=0):
         if field == "ts_input":
-            self.data["ts_input"] = {name:{} for name in self.ts_input_names}
+            self.data["ts_input"] = {str(name):{"exists":isinstance(name,str)} for name in self.ts_input_names} # include boolean to check if input is an already existing time series from CDF
         elif field == "ts_output":
             self.data["ts_output"] = {name:{} for name in self.ts_output_names}
         else:
@@ -83,8 +83,13 @@ class PrepareTimeSeries:
             ts_output_names = ts_output_names*len(ts_inputs.keys())
 
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+
+            #TODO: CHECK FIRST IF INPUT DATA IS TIME SERIES OR SEPARATELY PROVIDED SCALAR/ARRAY
             data_in = ts_inputs[ts_in]
             data_out = ts_outputs[ts_out]
+
+            if not data_in["exists"]:
+                continue # skip to next input
 
             # STEP 2: Retrieve time series and function schedules
             ts_orig = client.time_series.list(
@@ -128,6 +133,10 @@ class PrepareTimeSeries:
 
         # STEP 5: After backfilling, retrieve original signal for intended transformation period (i.e., today)
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+            if not ts_inputs[ts_in]["exists"]:
+                self.data["ts_input_today"][ts_in] = float(ts_in)
+                continue # skip to next input
+
             self.data["start_time"] = start_date
             self.data["end_time"] = end_date
 
@@ -220,20 +229,29 @@ class PrepareTimeSeries:
 
         return df
 
-    def align_time_series(self, ts_df):
-        latest_start_date = np.max([ts_df[i].index[0] for i in range(len(ts_df))])
-        earliest_end_date = np.min([ts_df[i].index[-1] for i in range(len(ts_df))])
+    def align_time_series(self, ts_all):
+        ts_df = [[i, ts] for i, ts in enumerate(ts_all) if not isinstance(ts, float)]
+        ts_scalars = [[i, ts] for i, ts in enumerate(ts_all) if isinstance(ts, float)]
+
+        latest_start_date = np.max([ts_df[i][1].index[0] for i in range(len(ts_df))])
+        earliest_end_date = np.min([ts_df[i][1].index[-1] for i in range(len(ts_df))])
 
         for i in range(len(ts_df)): # omit dates where some of time series have nan values
-            ts_df[i] = ts_df[i][ts_df[i].index >= latest_start_date]
-            ts_df[i] = ts_df[i][ts_df[i].index <= earliest_end_date]
+            ts_df[i][1] = ts_df[i][1][ts_df[i][1].index >= latest_start_date]
+            ts_df[i][1] = ts_df[i][1][ts_df[i][1].index <= earliest_end_date]
 
         time_index = pd.date_range(start=latest_start_date, end=earliest_end_date, freq=f"{self.data['granularity']}s")
 
+        ts_all = [0]*len(ts_all)
         for i in range(len(ts_df)):
-            ts_df[i] = ts_df[i].reindex(time_index, copy=False) # missing internal dates are filled with nan
+            ts_df[i][1] = ts_df[i][1].reindex(time_index, copy=False) # missing internal dates are filled with nan
+            ts_all[ts_df[i][0]] = ts_df[i][1]
 
-        return ts_df
+        for i in range(len(ts_scalars)):
+            ts_scalars[i][1] = pd.DataFrame(ts_scalars[i][1]*np.ones(len(ts_df[0][1])), index=ts_df[0][1].index) # can simply choose one of the dfs, they have the same index at this point anyway
+            ts_all[ts_scalars[i][0]] = ts_scalars[i][1]
+
+        return ts_all
 
     def get_ts_df(self):
         """List input time series' as dataframes
@@ -242,10 +260,10 @@ class PrepareTimeSeries:
             data (dict): input parameters for Cognite Function
 
         Returns:
-            (list): list of time series dataframes
+            (list): list of time series dataframes (and potentially scalars)
         """
         ts_data = self.data["ts_input_today"]
-        ts_data = [pd.DataFrame(ts_data[name]) for name in ts_data]
+        ts_data = [ts_data[name] if isinstance(ts_data[name], float) else pd.DataFrame(ts_data[name]) for name in ts_data]
         return ts_data
 
     def check_backfilling(self, ts_input_name, testing=False):
