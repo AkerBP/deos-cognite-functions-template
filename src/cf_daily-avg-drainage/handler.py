@@ -27,10 +27,11 @@ def handle(client: CogniteClient, data: dict) -> str:
     data = PrepTS.get_orig_timeseries(eval(calculation))
     ts_df = PrepTS.get_ts_df()
     ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
+
     # STEP 2: Run transformations
     transform_timeseries = RunTransformations(data, ts_df)
-    # df_new = run_transformation(data, ts_df)
     ts_out = transform_timeseries(eval(calculation))
+
     # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
     df_out = transform_timeseries.store_output_ts(ts_out)
     client.time_series.data.insert_dataframe(df_out)
