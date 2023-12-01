@@ -45,6 +45,30 @@ pipreqs src/cf_myname --force
 ```
 - ***NB**: Since `cognite-sdk` is pip-installed, `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 
+## Using Poetry
+1. Clone the repository using git and move to the cloned directory
+```
+git clone https://github.com/AkerBP-DataOps/deos-cognite-functions-template.git
+cd deos-cognite-functions-template
+```
+2. Make sure to have [poetry](https://python-poetry.org/docs/) installed.
+3. Set the location of the virtual environment to be inside the project repository
+```
+poetry config virtualenvs.in-project true
+````
+4. Install dependencies specified in `pyproject.toml`
+```
+poetry install
+```
+5. If using a new package, `newpackage`, add it to the poetry environment by
+```
+poetry add newpackage
+```
+6. If a new package has been added, update the `requirements.txt` file in the Cognite Functions subfolders (`src/cf_*`)
+```
+SOMETHING SOMETHING SOMETHING
+```
+
 ## Authentication with Python SDK.
 To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
 Once access has been granted, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. The complete code for authenticating is found in `src/cognite_authentication.py`
