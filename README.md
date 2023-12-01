@@ -1,6 +1,6 @@
 # Template for deployment of Cognite Functions for time series calculations
 ## Introduction
-This project provides a template for a workflow using Cognite Functions to run transformations of time series. The framework generalizes to arbitrary calculations of single or multiple time series. The idea is to facilitate and lower the threshold for end-users and SMEs with minor knowledge in data science to easily set up their own calculations on desired time series for quick insight, and hopefully acknowledge the potential and efficiency of using our workflow with Cognite Functions. For a concise guide for deployment of Cognite Functions, see [Cognite-Function-Demonstration](https://github.com/Aker-BP-OpsHub/Cognite-Function-Demonstration).
+This project provides a template for using Cognite Functions as a tool for transforming and deploying time series to Cognite Data Fusion (CDF). The framework generalizes to arbitrary calculations of single or multiple time series. The idea is to automate and streamline the process of running semi-advanced calculations on time series, and mapping the potential of using our workflow with Cognite Functions for enhanced time series analysis. For a concise guide for deployment of Cognite Functions, see [Cognite-Function-Demonstration](https://github.com/Aker-BP-OpsHub/Cognite-Function-Demonstration).
 
 We demonstrate the framework by transforming a time series of fluid volume percentage to a new time series of daily average drainage rate from the tanks. The new time series is frequently and automatically updated by letting the Cognite Function run on a prescribed schedule. The setup also facilitates backfilling for quality assurance of the new signal. 
 The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
@@ -15,6 +15,8 @@ We further detail how one goes by acquiring read/write access for CDF datasets, 
 └── handler_data.env
 ```
 Here, `src` is the main "hub" for creating and deploying Cognite Functions, `tests` provides scripts for unit tests and UaT tests, and in `docs/development` you find detailed documentation of project development and deployment. `authentication-data.env` contains IDs for your tenant and the client to authenticate with, and `handler-data.env` holds variables that are agnostic to the Cognite Functions, for instance the dataset id.
+
+**Disclaimer:**  In this project we assume that the time series data residing in CDF is of high quality, in alignment with data from the source system, although we are aware that the compression rate of signals in the source system and CDF may differ, which may cause differences in the data from CDF and the source system when aggregating the signals.
 
 ## Getting started
 1. Clone the repository using git and move to the cloned directory
@@ -39,9 +41,9 @@ pip install "cognite-sdk[pandas, numpy]"
 - *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
 ```
 pip install pipreqs
-pipreqs src/cf_myname
+pipreqs src/cf_myname --force
 ```
-- ***NB**: `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
+- ***NB**: Since `cognite-sdk` is pip-installed, `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
@@ -110,7 +112,7 @@ def handle(client, data):
     PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
     data = PrepTS.get_orig_timeseries(eval(calculation))
     ts_df = PrepTS.get_ts_df()
-    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
+    ts_df = PrepTS.align_time_series(ts_df)
    
     transform_timeseries = RunTransformations(data, ts_df)
     ts_out = transform_timeseries(eval(calculation))
@@ -120,8 +122,8 @@ def handle(client, data):
 
     return data["ts_input_backfill"]
 ```
-  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time    series inputs. ***NB:*** Make sure that the names of the input time series, provided in `data["ts_input_names"]`, are listed in correct order according to the calculations performed in `calculation`. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
-- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should return a pandas.Series object and follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different calculations, as long their associated main functions are named differently and defined with the prefix `calc_`.
+  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time series inputs. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
+- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should return a `pandas.Series` object and follow the naming convention `calc_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `calc_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `calc_`.
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
