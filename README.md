@@ -66,8 +66,9 @@ poetry add newpackage
 ```
 6. If a new package has been added, update the `requirements.txt` file in the Cognite Functions subfolders (`src/cf_*`)
 ```
-poetry export --without-hashes --format=requirements.txt > requirements.txt
-SOMETHING SOMETHING SOMETHING
+poetry export --without-hashes --format=requirements.txt > src/requirements.txt
+cd src
+poetry run python move_file.py
 ```
 
 ## Authentication with Python SDK.
