@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Install pipreqs
+pip install pipreqs
+
+# Run pipreqs to generate requirements.txt
+pipreqs /src
+
+# Create a new pyproject.toml file
+echo "[tool.poetry.dependencies]" > pyproject.toml
+cat requirements.txt | awk '{print $1" = \""$1"\""}' >> pyproject.toml
+
+# Install the dependencies with Poetry
+poetry install

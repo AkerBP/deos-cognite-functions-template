@@ -5,7 +5,6 @@ from typing import Tuple
 
 from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
-from initialize import initialize_client
 
 def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interval: str,
                              single_call=True, scheduled_call=False):

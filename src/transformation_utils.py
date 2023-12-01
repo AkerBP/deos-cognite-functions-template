@@ -1,7 +1,6 @@
 from typing import Any
 import numpy as np
 import pandas as pd
-import ast
 
 class RunTransformations:
     """Perform transformations/calculations on time series
