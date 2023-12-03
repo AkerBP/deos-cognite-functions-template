@@ -60,15 +60,19 @@ poetry config virtualenvs.in-project true
 ```
 poetry install
 ```
-5. Each Cognite Function requires a `requirements.txt` file in its designated folder, so run the following script to convert and move the dependencies in `pyproject.toml` to a `requirements.txt` file in each Cognite Function folder (prefixed *src/cf_**)
+5. Activate the virtual environment
+```
+poetry shell
+```
+6. Each Cognite Function requires a `requirements.txt` file in its designated folder, so run the following script to convert and move the dependencies in `pyproject.toml` to a `requirements.txt` file in each Cognite Function folder (prefixed *src/cf_**)
 ```
 poetry run python toml_to_requirements.py
 ```
-5. If using a new package, `newpackage`, add it to the poetry environment by
+7. If using a new package, `newpackage`, add it to the poetry environment by
 ```
 poetry add newpackage
 ```
-6. If a new package has been added, update the `requirements.txt` file in the Cognite Functions by rerunning
+8. If a new package has been added, update the `requirements.txt` file in the Cognite Functions by rerunning
 ```
 poetry run python toml_to_requirements.py
 ```
