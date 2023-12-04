@@ -64,19 +64,15 @@ poetry install
 ```
 poetry shell
 ```
-6. Each Cognite Function requires a `requirements.txt` file in its designated folder, so run the following script to convert and move the dependencies in `pyproject.toml` to a `requirements.txt` file in each Cognite Function folder (prefixed *src/cf_**)
+6. To add a new package, `package_name`, to the poetry environment, run
+```
+poetry add package
+```
+7. Each Cognite Function requires a `requirements.txt` file in its designated folder, so run the following script to convert and move the dependencies in `pyproject.toml` to a `requirements.txt` file in each Cognite Function folder (prefixed *src/cf_**)
 ```
 poetry run python toml_to_requirements.py
 ```
-7. If using a new package, `newpackage`, add it to the poetry environment by
-```
-poetry add newpackage
-```
-8. If a new package has been added, update the `requirements.txt` file in the Cognite Functions by rerunning
-```
-poetry run python toml_to_requirements.py
-```
-The convertion step with `toml_to_requirements.py` is necessary since Cognite Functions are not yet fully integrated with the Poetry package management.
+**NB:** You must run the above command every time a new package is added to Poetry. This is necessary since Cognite Functions are not yet fully integrated with the Poetry package management. Still, it is recommended to manually check the `requirements.txt` file for internal consistency.
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
