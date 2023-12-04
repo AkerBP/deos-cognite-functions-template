@@ -1,2 +1,10 @@
-cognite==0.0.4
-python-dotenv==1.0.0
+
+
+numpy
+pandas
+python-dotenv
+statsmodels
+cognite-sdk
+ipykernel
+
+

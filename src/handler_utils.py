@@ -2,10 +2,8 @@ import sys
 import os
 from datetime import datetime, timedelta
 from typing import Tuple
-import pytz
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from cognite.client.data_classes import TimeSeries
 from cognite.client._cognite_client import CogniteClient
 import sys
@@ -349,19 +347,27 @@ class PrepareTimeSeries:
         scheduled_calls = data["scheduled_calls"]
 
         # ----------------
-        now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
+        now = pd.Timestamp.now().date() #datetime(2023, 11, 14, 16, 30)  # provided in local time
         # ----------------
 
         if testing: # when testing backfilling, we only move some minutes back in time, not an entire day
             backfill_day = now.day
+            backfill_month = now.month
+            backfill_year = now.year
         else:
-            backfill_day = now.day-1
-        start_time = datetime(now.year, now.month, backfill_day,
+            backfill_date = (now - timedelta(days=1)) #(now - timedelta(days=1))
+            backfill_day = backfill_date.day
+            backfill_month = backfill_date.month
+            backfill_year = backfill_date.year
+
+        SEC_SINCE_EPOCH = datetime(1970, 1, 1, 0, 0)
+        start_time = datetime(backfill_year, backfill_month, backfill_day,
                             data["backfill_hour"], data["backfill_min_start"])  # -1 to get previous day
-        start_time = pytz.utc.localize(
-            start_time).timestamp() * 1000  # convert to local time
-        end_time = datetime(now.year, now.month, backfill_day, data["backfill_hour"], data["backfill_min_end"])
-        end_time = pytz.utc.localize(end_time).timestamp() * 1000
+        start_time = (start_time - SEC_SINCE_EPOCH).total_seconds() * 1000  # convert to local time
+
+        end_time = datetime(backfill_year, backfill_month, backfill_day,
+                            data["backfill_hour"], data["backfill_min_end"])
+        end_time = (end_time - SEC_SINCE_EPOCH).total_seconds() * 1000
 
         try:
             mask_start = scheduled_calls["scheduled_time"] >= start_time
