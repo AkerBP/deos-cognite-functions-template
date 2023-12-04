@@ -35,19 +35,6 @@ poetry config virtualenvs.in-project true
 ```
 poetry install
 ```
-5. Activate the virtual environment
-```
-poetry shell
-```
-6. To add a new package, `package_name`, to the poetry environment, run
-```
-poetry add package
-```
-7. Each Cognite Function requires a `requirements.txt` file in its designated folder, so run the following script to convert and move the dependencies in `pyproject.toml` to a `requirements.txt` file in each Cognite Function folder (prefixed *src/cf_**)
-```
-poetry run python toml_to_requirements.py
-```
-**NB:** You must run the above command every time a new package is added to Poetry. This is necessary since Cognite Functions are not yet fully integrated with the Poetry package management. Still, it is recommended to manually check the `requirements.txt` file for internal consistency.
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
@@ -81,7 +68,7 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose. Run the code cells consequtively to authenticate with CDF, and deploy and schedule Cognite Functions for given input data.
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
 The `src` folder is organized as follows.
 ```markdown
 ├── src
@@ -135,8 +122,10 @@ The desired Cognite Function *myname* is run by supplying *myname* as value to t
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
-### 1. Create file
-First, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handle.zip` in the subfolder `cf_*myname*` designated for the Cognite Function with name `myname`. The zip file contains the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `handler_utils.py` and `transformation.py`)
+### 1. Generate Cognite Function folder structure
+The first step is to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. In addition to generating necessary scripts for deployment, `generate_cf.py` also sets up a dedicated virtual environment for this function, including autogeneration of `requirements.txt`.  **NB: Internal consistency of `requirements.txt` is not guaranteed through this approach, so you may need to manually check for consistency in case of errors calling the Cognite Function.**
+### 2. Create file
+Next, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handle.zip` in the subfolder `cf_*myname*` designated for the Cognite Function with name `myname`. The zip file contains the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `handler_utils.py` and `transformation.py`)
 ```
 folder = os.getcwd().replace("\\", "/")
 folder_cf = folder + "/" + data_dict["function_name"]
@@ -145,7 +134,7 @@ zip_name = "zip_handle.zip"
 uploaded = client.files.upload(path=f"{folder_cf}/{zip_name}", name=zip_name, data_set_id=dataset_id)
 ```
 The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
-### 2. Deployment
+### 3. Deployment
 The next step is to create an instance of the `handle` function (located in the subfolder `cf_*myname*`) to be deployed to CDF. 
 ```
 client.functions.create(
@@ -155,12 +144,12 @@ client.functions.create(
 )
 ```
 The `file_id` is assigned the id of the newly created zip file.
-### 3. Initial transformation
+### 4. Initial transformation
 Once deployed, we can transform our time series using the Cognite Function. The first call will transform all historic datapoints of the input time series. This could potentially be a lot of data, and since Cognite Function schedules are limited in terms of runtime, we perform our initial transformation by manually calling the Cognite Function. 
 ```
 cognite_function.call(data=data_dict)
 ```
-### 4. Set up schedule
+### 5. Set up schedule
 Finally, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
 ```
 client.functions.schedules.create(
@@ -172,7 +161,7 @@ client.functions.schedules.create(
 )
 
 ```
-**The steps above are contained in and collectively run by the function `deploy_cognite_functions.py`.**
+**Steps 2-5 above are collectively run by the function `deploy_cognite_functions.py`.**
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
