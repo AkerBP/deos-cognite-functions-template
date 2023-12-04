@@ -19,33 +19,8 @@ Here, `src` is the main "hub" for creating and deploying Cognite Functions, `tes
 **Disclaimer:**  In this project we assume that the time series data residing in CDF is of high quality, in alignment with data from the source system, although we are aware that the compression rate of signals in the source system and CDF may differ, which may cause differences in the data from CDF and the source system when aggregating the signals.
 
 ## Getting started
-1. Clone the repository using git and move to the cloned directory
-```
-git clone https://github.com/AkerBP-DataOps/deos-cognite-functions-template.git
-cd deos-cognite-functions-template
-```
-2. Create a virtual environment using conda
-```
-conda create -n myenv
-conda activate myenv
-```
-3. Install packages (conda manages the dependencies)
-```
-conda install -c conda-forge numpy statsmodels matplotlib python-dotenv msal ipykernel
-pip install "cognite-sdk[pandas, numpy]"
-```
-- The `cognite-sdk` package is used to perform transformations for CDF directly through Python. The package supports integrated functionality with `pandas` for data structuring, and `numpy` for vectorization and performance boosts. These are therefore specified as dependencies inside brackets.
-- For advanced management of Python virtual environments, `poetry` is recommended for the installation. See [using-cognite-python-sdk](https://github.com/cognitedata/using-cognite-python-sdk) for more details
-4. Specify dependencies in `requirements.txt`
-- The main entry point for a Cognite Function `myname` is a `handler.py` containing the particular transformations/calculations of your time series. This is located in the subfolder `cf_myname`, and is supported by a `requirements.txt` file located in the same folder
-- *If your virtual environment includes other packages not used by `handler.py`, we recommend using `pipreqs` to ensure consistency with the `requirements.txt` file*
-```
-pip install pipreqs
-pipreqs src/cf_myname --force
-```
-- ***NB**: Since `cognite-sdk` is pip-installed, `pipreqs` will specify wrong dependency to Cognite Python SDK package. **Replace the line `cognite==X.X.X` with `cognite-sdk` in `requirements.txt`**. If you have installed other packages, it is a good idea to double-check their specification in `requirements.txt`*
+This section details the necessary steps to get ready for deployment of Cognite Functions using this project's template. To this end, we set up a virtual environment using the Poetry package manager.
 
-## Using Poetry
 1. Clone the repository using git and move to the cloned directory
 ```
 git clone https://github.com/AkerBP-DataOps/deos-cognite-functions-template.git
