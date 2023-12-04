@@ -34,6 +34,7 @@ def handle(client: CogniteClient, data: dict) -> str:
     ts_out = transform_timeseries(eval(calculation))
     # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
     df_out = transform_timeseries.store_output_ts(ts_out)
+
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
@@ -46,10 +47,7 @@ if __name__ == '__main__':
     import re
 
     cdf_env = "dev"
-    if cdf_env not in ["dev", "test", "prod"]:
-        token = True
-    else:
-        token = False
+    token = False
 
     client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
@@ -58,7 +56,7 @@ if __name__ == '__main__':
     # ts_input_names = ["VAL_11-LT-95034A:X.Value"]
     ts_output_names = ["VAL_17-FI-9101-286:MULTIPLE.Test", "VAL_17-PI-95709-258:MULTIPLE.Test", "VAL_11-PT-92363B:MULTIPLE.Test", "VAL_11-XT-95067B:MULTIPLE.Test"]
     # ts_output_names = ["VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"]
-    function_name = "multiple_outputs" #
+    function_name = "multiple-outputs" #
     calculation_function = "calculation" #
 
     sampling_rate = 60 #
@@ -69,14 +67,14 @@ if __name__ == '__main__':
     cdf_env = "dev"
     func_name = re.search("[^/]+$", os.getcwd().replace("\\","/"))[0]
 
-    data_dict = {'ts_input':{name:{} for name in ts_input_names}, # empty dictionary for each time series input
-            'ts_output':{name:{} for name in ts_output_names},
+    data_dict = {'ts_input_names': ts_input_names, # empty dictionary for each time series input
+            'ts_output_names': ts_output_names,
             'function_name': f"cf_{function_name}",
             'calculation_function': f"calc_{calculation_function}",
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'backfill_days': backfill_days,
-            'backfill_hour': 23, # backfilling to be scheduled at last hour of day as default
+            'backfill_hour': 9, # backfilling to be scheduled at last hour of day as default
             'backfill_min_start': 0, 'backfill_min_end': int(cron_interval_min),
             'calc_params': {
             }}

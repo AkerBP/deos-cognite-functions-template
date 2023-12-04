@@ -2,7 +2,6 @@ import os
 from cognite.client import CogniteClient
 from cognite.client.config import ClientConfig
 from cognite.client.credentials import OAuthInteractive, OAuthClientCredentials
-from cognite_authentication import set_cdf_client_connection
 
 from dotenv import load_dotenv
 
@@ -52,31 +51,22 @@ def initialize_client(cdf_env: str, cache_token: bool, path_to_env: str = None):
     PORT = 53000
 
     # creds = OAuthInteractive(client_id=CLIENT_ID, authority_url=AUTHORITY_URI, scopes=SCOPES)
-    if cache_token:
-        client = set_cdf_client_connection(
-            client_name=CLIENT_NAME,
-            project=COGNITE_PROJECT,
-            client_id=CLIENT_ID,
-            # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
-            tenant_id=TENANT_ID,
-        )
-    else:
-        creds = OAuthClientCredentials(
-            token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
-            client_id=str(os.getenv("CLIENT_ID")),
-            # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
-            scopes=SCOPES,
-            client_secret=str(os.getenv("CLIENT_SECRET")),
-        )
+    creds = OAuthClientCredentials(
+        token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
+        client_id=str(os.getenv("CLIENT_ID")),
+        # client_id="9baced39-1889-4bf4-a18a-5371b9d9718d",
+        scopes=SCOPES,
+        client_secret=str(os.getenv("CLIENT_SECRET")),
+    )
 
-        client_cnf = ClientConfig(
-            client_name=CLIENT_NAME,
-            base_url=f"https://{CDF_CLUSTER}.cognitedata.com",
-            project=COGNITE_PROJECT,
-            credentials=creds,
-        )
+    client_cnf = ClientConfig(
+        client_name=CLIENT_NAME,
+        base_url=f"https://{CDF_CLUSTER}.cognitedata.com",
+        project=COGNITE_PROJECT,
+        credentials=creds,
+    )
 
-        client = CogniteClient(client_cnf)
+    client = CogniteClient(client_cnf)
 
     status = client.iam.token.inspect()  # verify your client token and status
     # print(status)

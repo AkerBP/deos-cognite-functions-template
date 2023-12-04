@@ -1,7 +1,10 @@
-cognite-sdk
-matplotlib==3.7.2
-msal==1.24.0
-numpy==1.24.3
-pandas==2.0.3
-python-dotenv==1.0.0
-statsmodels==0.14.0
+
+ 
+numpy 
+pandas 
+python-dotenv 
+statsmodels 
+cognite-sdk 
+ipykernel 
+
+
