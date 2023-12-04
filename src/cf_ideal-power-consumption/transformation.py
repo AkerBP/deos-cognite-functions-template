@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def calc_ideal_power_consumption(data, ts_0, ts_1, ts_2, ts_3):
+def main_ideal_power_consumption(data, ts_0, ts_1, ts_2, ts_3):
     """Calculate ideal power consumption from four input time series.
 
     Args:

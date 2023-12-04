@@ -6,12 +6,11 @@ from cognite.client.credentials import OAuthInteractive, OAuthClientCredentials
 from dotenv import load_dotenv
 
 
-def initialize_client(cdf_env: str, cache_token: bool, path_to_env: str = None):
+def initialize_client(cdf_env: str, path_to_env: str = None):
     """Initialize Cognite client for provided project
 
     Args:
         cdf_env (str): What CDF environment to connect to
-        cache_token (bool): Authentication trhough a local cache token
         path_to_env (str): Relative path to .env file where authentication environment variables are defined. Defaults to None.
 
     Raises:

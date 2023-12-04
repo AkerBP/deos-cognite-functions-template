@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-def calc_wasted_energy(data, ts_0, ts_1, ts_ipc):
+def main_wasted_energy(data, ts_0, ts_1, ts_ipc):
     """Compute time series of wasted energy.
 
     Args:
