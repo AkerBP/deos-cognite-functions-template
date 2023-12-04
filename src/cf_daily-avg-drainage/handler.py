@@ -41,17 +41,14 @@ def handle(client: CogniteClient, data: dict) -> str:
 
 
 if __name__ == '__main__':
+    # JUST FOR TESTING
     from initialize import initialize_client
     from dotenv import load_dotenv
     import os
 
     cdf_env = "dev"
-    if cdf_env not in ["dev", "test", "prod"]:
-        token = True
-    else:
-        token = False
 
-    client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
+    client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
     # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]

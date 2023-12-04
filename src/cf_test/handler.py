@@ -1,3 +1,4 @@
+
 import os
 import sys
 
@@ -30,47 +31,11 @@ def handle(client: CogniteClient, data: dict) -> str:
 
     # STEP 2: Run transformations
     transform_timeseries = RunTransformations(data, ts_df)
-    # df_new = run_transformation(data, ts_df)
     ts_out = transform_timeseries(eval(calculation))
+
     # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
     df_out = transform_timeseries.store_output_ts(ts_out)
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
     return data["ts_input_backfill"]
-
-
-if __name__ == '__main__':
-    # JUST FOR TESTING
-    from initialize import initialize_client
-    from dotenv import load_dotenv
-    import os
-
-    cdf_env = "dev"
-
-    client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
-    load_dotenv("../../handler-data.env")
-
-    ts_input_names = ["VAL_11-XT-95067B:Z.X.Value", 87.8, "TEST_IdealPowerConsumption"]
-    ts_output_names = ["TEST_WastedEnergy"]
-    # ts_output_names = ["VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue"]
-    tank_volume = 1400
-    derivative_value_excl = 0.002
-    # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    function_name = "wasted-energy"
-    calc_func = "wasted_energy"
-
-    data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
-            'ts_output_names':ts_output_names,
-            'granularity':60, # granularity used to fetch input time series, given in seconds
-            'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
-            'dataset_id': 1832663593546318,
-            'backfill': False, 'backfill_days': 3,
-            'function_name': f"cf_{function_name}",
-            'calculation_function': f"calc_{calc_func}",
-            'calc_params': {},
-            'backfill_hour': 10, 'backfill_min_start': 0, 'backfill_min_end': 15,
-            'lowess_frac': 0.001, 'lowess_delta': 0.01} # NB: change dataset id when going to dev/test/prod!
-
-    # client.time_series.delete(external_id="VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue")
-    new_df = handle(client, data_dict)

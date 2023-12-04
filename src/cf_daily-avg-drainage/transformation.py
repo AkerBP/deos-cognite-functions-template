@@ -3,7 +3,7 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 from datetime import datetime
 import numpy as np
 
-def calc_daily_avg_drainage(data, ts):
+def main_daily_avg_drainage(data, ts):
     """Calculation function
 
     Args:

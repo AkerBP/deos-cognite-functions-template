@@ -117,14 +117,14 @@ class PrepareTimeSeries:
             except:
                 raise KeyError(f"Input time series {ts_in} does not exist.")
 
-            ts_input_backfill = str(json.dumps(None))
+            ts_input_backfill = json.dumps(None)
 
             # STEP 3: Identify backfill candidates
             backfill_dates = []
             # TODO: Change to 23 hours and 45 minutes.
             # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-            if end_date.hour == self.data["backfill_hour"] and \
-            end_date.minute >= self.data["backfill_min_start"] and \
+            #if end_date.hour == self.data["backfill_hour"] and \
+            if end_date.minute >= self.data["backfill_min_start"] and \
             end_date.minute < self.data["backfill_min_end"] \
             and data_out["exists"]:
                 ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
@@ -160,6 +160,7 @@ class PrepareTimeSeries:
             df_orig_today = self.retrieve_orig_ts(ts_in, ts_out)
             self.data["ts_input_today"][ts_in] = df_orig_today[ts_in]
 
+        self.data["ts_input_backfill"] = json.dumps(self.data["ts_input_backfill"])
         return self.data
 
 
@@ -362,11 +363,11 @@ class PrepareTimeSeries:
 
         SEC_SINCE_EPOCH = datetime(1970, 1, 1, 0, 0)
         start_time = datetime(backfill_year, backfill_month, backfill_day,
-                            data["backfill_hour"], data["backfill_min_start"])  # -1 to get previous day
+                            pd.Timestamp.now().hour-1, data["backfill_min_start"])  # data["backfill_hour"], data["backfill_min_start"])
         start_time = (start_time - SEC_SINCE_EPOCH).total_seconds() * 1000  # convert to local time
 
         end_time = datetime(backfill_year, backfill_month, backfill_day,
-                            data["backfill_hour"], data["backfill_min_end"])
+                            pd.Timestamp.now().hour-1, data["backfill_min_end"])
         end_time = (end_time - SEC_SINCE_EPOCH).total_seconds() * 1000
 
         try:
@@ -376,7 +377,8 @@ class PrepareTimeSeries:
         except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
             print(
                 f"Input {ts_input_name}: No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
-            return ts_orig_all[ts_input_name].to_json(), backfill_dates
+            orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
+            return orig_as_dict, backfill_dates
 
         last_backfill_call = my_func.retrieve_call(id=last_backfill_id)
         print(
@@ -437,7 +439,8 @@ class PrepareTimeSeries:
             return ts_orig_all, yesterday_df, backfill_dates, \
                     num_dates_old, num_dates_new
         # return recent original signal
-        return ts_orig_all[ts_input_name].to_json(), backfill_dates
+        orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
+        return orig_as_dict, backfill_dates
 
 
 if __name__ == "__main__":

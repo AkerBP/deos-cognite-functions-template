@@ -41,6 +41,7 @@ def handle(client: CogniteClient, data: dict) -> str:
     return data["ts_input_backfill"]
 
 if __name__ == '__main__':
+    # JUST FOR TESTING
     from initialize import initialize_client
     from dotenv import load_dotenv
     import os
