@@ -51,14 +51,13 @@ if __name__ == '__main__':
     client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    ts_input_names = ["VAL_11-XT-95067B:Z.X.Value", 87.8, "TEST_IdealPowerConsumption"]
-    ts_output_names = ["TEST_WastedEnergy"]
-    # ts_output_names = ["VAL_11-LT-95007B:X.CDF.D.AVG.LeakValue"]
+    ts_input_names = ["VAL_11-LT-95034A:X.Value"] # VOLUME PERCENTAGE
+    ts_output_names = ["VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"] # DAILY AVERAGE DRAINAGE
+    function_name = "daily-avg-drainage"
+    calculation_function = "daily_avg_drainage"
+
     tank_volume = 1400
     derivative_value_excl = 0.002
-    # start_date = datetime(2023, 3, 21, 1, 0, 0)
-    function_name = "wasted-energy"
-    calc_func = "wasted_energy"
 
     data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
             'ts_output_names':ts_output_names,
@@ -67,7 +66,7 @@ if __name__ == '__main__':
             'dataset_id': 1832663593546318,
             'backfill': False, 'backfill_days': 3,
             'function_name': f"cf_{function_name}",
-            'calculation_function': f"calc_{calc_func}",
+            'calculation_function': f"main_{calculation_function}",
             'calc_params': {},
             'backfill_hour': 10, 'backfill_min_start': 0, 'backfill_min_end': 15,
             'lowess_frac': 0.001, 'lowess_delta': 0.01} # NB: change dataset id when going to dev/test/prod!

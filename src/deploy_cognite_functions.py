@@ -25,6 +25,7 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interv
     cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
 
     if cognite_function is None: # function not exist, create ...
+        import time
         folder = os.getcwd().replace("\\", "/")
         folder_cf = folder + "/" + data_dict["function_name"]
 
@@ -58,9 +59,8 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interv
         print("Cognite Function created. Waiting for deployment status to be ready ...")
         while cognite_function.status != "Ready":
             # wait for function to be ready
-            import time
-            time.sleep(1) # wait one second to avoid too frequent loop iterations
-            cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
+            time.sleep(3) # wait three second to avoid too frequent loop iterations
+            cognite_function.update()
 
         print("Ready for deployement.")
 

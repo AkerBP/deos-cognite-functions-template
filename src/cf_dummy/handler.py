@@ -30,35 +30,33 @@ def handle(client: CogniteClient, data: dict) -> str:
 
     # STEP 2: Run transformations
     transform_timeseries = RunTransformations(data, ts_df)
-    # df_new = run_transformation(data, ts_df)
     ts_out = transform_timeseries(eval(calculation))
+
     # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
     df_out = transform_timeseries.store_output_ts(ts_out)
-
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
     return data["ts_input_backfill"]
+
 
 if __name__ == '__main__':
     # JUST FOR TESTING
     from initialize import initialize_client
     from dotenv import load_dotenv
     import os
-    import re
 
     cdf_env = "dev"
-    token = False
 
-    client = initialize_client(cdf_env, cache_token=token, path_to_env="../../authentication-ids.env")
+    client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
-    # ts_input_names = ["VAL_11-LT-95034A:X.Value"]
-    ts_output_names = ["VAL_17-FI-9101-286:MULTIPLE.Test", "VAL_17-PI-95709-258:MULTIPLE.Test", "VAL_11-PT-92363B:MULTIPLE.Test", "VAL_11-XT-95067B:MULTIPLE.Test"]
-    # ts_output_names = ["VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"]
-    function_name = "multiple-outputs" #
-    calculation_function = "calculation" #
+    # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
+    ts_input_names = ["VAL_11-LT-95034A:X.Value"]
+    # ts_output_names = ["VAL_17-FI-9101-286:CDF.IdealPowerConsumption"]
+    ts_output_names = ["VAL_11-LT-95034A:X.CDF.D.AVG.LeakValue"]
+    function_name = "daily-avg-drainage" #
+    calculation_function = "daily_avg_drainage" #
 
     sampling_rate = 60 #
     cron_interval_min = str(15) #
@@ -66,18 +64,24 @@ if __name__ == '__main__':
     backfill_days = 3
 
     cdf_env = "dev"
-    func_name = re.search("[^/]+$", os.getcwd().replace("\\","/"))[0]
 
-    data_dict = {'ts_input_names': ts_input_names, # empty dictionary for each time series input
-            'ts_output_names': ts_output_names,
+    tank_volume = 1400
+    derivative_value_excl = 0.002
+    lowess_frac = 0.001
+    lowess_delta = 0.01
+
+    data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
+            'ts_output_names':ts_output_names,
             'function_name': f"cf_{function_name}",
-            'calculation_function': f"calc_{calculation_function}",
+            'calculation_function': f"main_{calculation_function}",
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'backfill_days': backfill_days,
-            'backfill_hour': 9, # backfilling to be scheduled at last hour of day as default
-            'backfill_min_start': 0, 'backfill_min_end': int(cron_interval_min),
+            'backfill_hour': 10, # backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': 10, 'backfill_min_end': 10 + int(cron_interval_min),
             'calc_params': {
+                'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
+                'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta
             }}
 
     # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
