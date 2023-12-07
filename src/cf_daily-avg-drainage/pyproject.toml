@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "cf-daily-avg-drainage"
+version = "0.1.0"
+description = ""
+authors = ["vetlenev <vetle.nevland@akerbp.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+cognite-sdk = "^7.5.4"
+statsmodels = "^0.14.0"
+pandas = "^2.1.3"
+python-dotenv = "^1.0.0"
+numpy = "^1.26.2"
+ipykernel = "^6.27.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

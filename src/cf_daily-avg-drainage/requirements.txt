@@ -1,0 +1,10 @@
+
+ 
+cognite-sdk 
+statsmodels 
+pandas 
+python-dotenv 
+numpy 
+ipykernel 
+
+
