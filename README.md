@@ -123,9 +123,9 @@ The desired Cognite Function *myname* is run by supplying *myname* as value to t
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
 ### 1. Generate Cognite Function folder structure
-The first step is to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. 
+The first step to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. 
 
-In addition to generating necessary scripts for deployment, `generate_cf.py` also sets up a dedicated virtual environment for this function, including autogeneration of `requirements.txt`.  **NB: Internal consistency of `requirements.txt` is not guaranteed through this approach, so you may need to manually check for consistency in case of errors calling the Cognite Function.**
+In addition to generating necessary scripts for deployment, `generate_cf.py` also sets up a dedicated Poetry environment for this function, including autogeneration of `requirements.txt`.  **NB: Internal consistency of `requirements.txt` is not guaranteed through this approach, so you may need to manually check for consistency in case of errors calling the Cognite Function.**
 ### 2. Create file
 Next, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handle.zip` in the subfolder `cf_*myname*` designated for the Cognite Function with name `myname`. The zip file contains the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `handler_utils.py` and `transformation.py`)
 ```
@@ -149,6 +149,7 @@ The `file_id` is assigned the id of the newly created zip file.
 ### 4. Initial transformation
 Once deployed, we can transform our time series using the Cognite Function. The first call will transform all historic datapoints of the input time series. This could potentially be a lot of data, and since Cognite Function schedules are limited in terms of runtime, we perform our initial transformation by manually calling the Cognite Function. 
 ```
+cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
 cognite_function.call(data=data_dict)
 ```
 ### 5. Set up schedule
@@ -180,7 +181,7 @@ where `conftest.py` sets up necessary configurations of the tests, and `test_met
 Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
 - The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
 - If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed
-- The CDF Operations team is by the time of writing (September 2023) understaffed, where a response to your request form is expected to take multiple days, or up to a week. This is not sustainable for a company like Aker BP with lots of employees developing their work scope
+- The CDF Operations team is by the time of writing (November 2023) understaffed, where a response to your request form is expected to take multiple days, or even weeks, which is too much for new employees that deserves a quick onboarding experience
 
 ## *OPTIONAL READ:* Calculation of drainage rate
 This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
