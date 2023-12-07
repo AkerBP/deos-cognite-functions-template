@@ -105,41 +105,62 @@ def handle(client: CogniteClient, data: dict) -> str:
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
     PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
-    data = PrepTS.get_orig_timeseries(eval(calculation))
-    ts_df = PrepTS.get_ts_df()
-    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
+    PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
+    df_in = PrepTS.get_ts_df()
+    df_in = PrepTS.align_time_series(df_in) # align input time series to cover same time period
 
     # STEP 2: Run transformations
-    transform_timeseries = RunTransformations(data, ts_df)
-    ts_out = transform_timeseries(eval(calculation))
+    transform_timeseries = RunTransformations(PrepTS.data, df_in)
+    df_out = transform_timeseries(eval(calculation))
 
     # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
-    df_out = transform_timeseries.store_output_ts(ts_out)
+    df_out = transform_timeseries.store_output_ts(df_out)
     client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return data["ts_input_backfill"]
+    return PrepTS.data["ts_input_backfill"]
 '''
 
 def write_transformation():
     return '''
-def main_calculation(data, *ts_inputs):
-    """Main function for transforming a set of input timeseries from
-    whatever calculations you would like to perform.
+import pandas as pd
+
+def main_calculation_A(data, ts_inputs):
+    """Sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
 
     Args:
         data (dict): calculation-specfic parameters for Cognite Function
-        ts_inputs (list | pd.DataFrame): list of inputs time series to transform, each one given as a pd.DataFrame
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
 
     Returns:
-        (list): transformed time series given as pd.Series
+        (pd.DataFrame): transformed time series, one column per time series
     """
-    # The following is just a dummy calculation
-    ts_out = []
-    for ts in ts_inputs:
-        ts_df = ts.rolling(window=int(len(ts)/10)).mean()
-        ts_out.append(ts_df.squeeze()) # Necessary to convert from pd.DataFrame to pd.Series!
+    ts_out = pd.DataFrame()
+
+    for ts in ts_inputs.columns:
+        ts_out[ts] = ts_inputs[ts].dropna().rolling(window=10).mean().reindex(ts_inputs[ts].index, method="nearest")
+
     return ts_out
+
+def main_calculation_B(data, ts_inputs):
+    """Other sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
+
+    Args:
+        data (dict): calculation-specfic parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    ts_0 = ts_inputs.iloc[:,0] # first time series in dataframe
+    ts_1 = ts_inputs.iloc[:,1] # second time series ...
+    ts_2 = ts_inputs.iloc[:,2]
+
+    ts_out = ts_0.max() + 2*ts_1 + ts_0*ts_2/5
+
+    return pd.DataFrame(ts_out) # ensure output given as dataframe
 '''
 
 def run_poetry_command(command: str):

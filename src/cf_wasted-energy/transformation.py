@@ -27,3 +27,5 @@ def main_wasted_energy(data, ts_0, ts_1, ts_ipc):
 
     return wasted_energy.squeeze() # DataFrame --> Series
 
+
+

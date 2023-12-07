@@ -4,17 +4,24 @@ from datetime import datetime, timedelta
 from typing import Tuple
 import pandas as pd
 import numpy as np
-from cognite.client.data_classes import TimeSeries
-from cognite.client._cognite_client import CogniteClient
-import sys
 import ast
 import json
+import logging
+
+from cognite.client.data_classes import TimeSeries
+from cognite.client._cognite_client import CogniteClient
+from cognite.client.exceptions import CogniteAPIError
+
+logger = logging.getLogger(__name__)
 
 # parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # if parent_path not in sys.path:
 #     sys.path.append(parent_path)
 
 from transformation_utils import RunTransformations
+
+class FunctionDeployError(Exception):
+    pass
 
 class PrepareTimeSeries:
     """Class to organize input time series and prepare output time series
@@ -74,7 +81,6 @@ class PrepareTimeSeries:
         start_date = pd.to_datetime(end_date.date())
         self.data["start_time"] = start_date
         self.data["end_time"] = end_date
-        print(f"Timestamp.now: {end_date}")
 
         ts_inputs = self.data["ts_input"]
         ts_outputs = self.data["ts_output"]
@@ -101,12 +107,11 @@ class PrepareTimeSeries:
 
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
 
-            #TODO: CHECK FIRST IF INPUT DATA IS TIME SERIES OR SEPARATELY PROVIDED SCALAR/ARRAY
             data_in = ts_inputs[ts_in]
             data_out = ts_outputs[ts_out]
 
             if not data_in["exists"]:
-                continue # skip to next input
+                continue # input not in CDF, provided separately, skip to next input
 
             # STEP 2: Retrieve time series and function schedules
             ts_orig = client.time_series.list(
@@ -123,8 +128,8 @@ class PrepareTimeSeries:
             backfill_dates = []
             # TODO: Change to 23 hours and 45 minutes.
             # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-            #if end_date.hour == self.data["backfill_hour"] and \
-            if end_date.minute >= self.data["backfill_min_start"] and \
+            if end_date.hour == self.data["backfill_hour"] and \
+            end_date.minute >= self.data["backfill_min_start"] and \
             end_date.minute < self.data["backfill_min_end"] \
             and data_out["exists"]:
                 ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
@@ -152,7 +157,7 @@ class PrepareTimeSeries:
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
             if not ts_inputs[ts_in]["exists"]:
                 self.data["ts_input_today"][ts_in] = float(ts_in)
-                continue # skip to next input
+                continue # input not from CDF, skip to next input
 
             self.data["start_time"] = start_date
             self.data["end_time"] = end_date
@@ -177,6 +182,11 @@ class PrepareTimeSeries:
         client = self.client
 
         my_func = client.functions.retrieve(external_id=data["function_name"])
+        if my_func is None:
+            err = f"No function with external_id={data['function_name']} exists."
+            logger.warning(err)
+            raise FunctionDeployError(err)
+
         try:
             my_schedule_id = client.functions.schedules.list(
                 name=data["function_name"]).to_pandas().id[0]
@@ -209,7 +219,7 @@ class PrepareTimeSeries:
             if not ts_output[ts_out_name]["exists"] and not data["scheduled_calls"].empty:
                 # Schedule is set up before initial write has been done locally. Abort schedule!
                 client.functions.schedules.delete(id=data["schedule_id"])
-                print(f"Cognite Functions can't do initial transformation. Make sure to first run handler.py locally before deploying a schedule for your Cognite Function. \
+                print(f"Cognite Functions schedules can't do initial transformation. Make sure to first run handler.py locally before deploying a schedule for your Cognite Function. \
                         \nDeleting ... \nSchedule with id {data['schedule_id']} has been deleted.")
                 sys.exit()
             elif not ts_output[ts_out_name]["exists"]:
@@ -238,36 +248,43 @@ class PrepareTimeSeries:
 
         start_date = data["start_time"]
         end_date = data["end_time"]
-        # If no data in output time series, run cognite function from first available date of original time series until date with last updated datapoint
-        if not data_out["exists"]:
-            first_date_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                            aggregates="average",
-                                                            granularity=f"{data['granularity']}s",
-                                                            limit=1).to_pandas().index[0]
-            start_date = first_date_orig
 
-        df = pd.DataFrame()
-        # If no datapoints for current date, search backwards until date with last updated datapoint
-        while df.empty:
-            ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                    aggregates="average",
-                                                    granularity=f"{data['granularity']}s",
-                                                    start=pd.to_datetime(
-                                                        start_date),
-                                                    end=pd.to_datetime(
-                                                        end_date),
-                                                    )
+        try:
+            # If no data in output time series, run cognite function from first available date of original time series until date with last updated datapoint
+            if not data_out["exists"]:
+                first_date_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                                                aggregates="average",
+                                                                granularity=f"{data['granularity']}s",
+                                                                limit=1).to_pandas().index[0]
+                start_date = first_date_orig
 
-            df = ts_orig.to_pandas()
-            start_date = pd.to_datetime(start_date - timedelta(days=1)
-                                        ).date()  # start of previous date
-            end_date = pd.to_datetime(start_date + timedelta(days=1))
-            if df.empty:
-                print(f"No data for time series '{ts_in}' for current date. Reversing to date: {start_date}")
+            df = pd.DataFrame()
+            # If no datapoints for current date, search backwards until date with last updated datapoint
+            while df.empty:
+                ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                                        aggregates="average",
+                                                        granularity=f"{data['granularity']}s",
+                                                        start=pd.to_datetime(
+                                                            start_date),
+                                                        end=pd.to_datetime(
+                                                            end_date),
+                                                        )
 
-        df = df.rename(columns={ts_orig_extid + "|average": ts_in})
+                df = ts_orig.to_pandas()
+                start_date = pd.to_datetime(start_date - timedelta(days=1)
+                                            ).date()  # start of previous date
+                end_date = pd.to_datetime(start_date + timedelta(days=1))
+                if df.empty:
+                    print(f"No data for time series '{ts_in}' for current date. Reversing to date: {start_date}")
 
-        return df
+            df = df.rename(columns={ts_orig_extid + "|average": ts_in})
+            return df
+
+        except CogniteAPIError as error:
+            msg = "Unable to read time series. Deployment key is missing capability 'timeseries:READ'"
+            logger.error(msg)
+            raise CogniteAPIError(msg, error.code, error.x_request_id) from None
+
 
     def align_time_series(self, ts_all: list) -> list:
         """Align input time series to cover same data range.
@@ -276,7 +293,7 @@ class PrepareTimeSeries:
             ts_all (list): list of input time series (pd.DataFrame or scalars)
 
         Returns:
-            (list): list of time series truncated by common dates
+            (pd.DataFrame): dataframe of time series truncated by common dates
         """
         ts_df = [[i, ts] for i, ts in enumerate(ts_all) if not isinstance(ts, float)]
         ts_scalars = [[i, ts] for i, ts in enumerate(ts_all) if isinstance(ts, float)]
@@ -298,6 +315,8 @@ class PrepareTimeSeries:
         for i in range(len(ts_scalars)):
             ts_scalars[i][1] = pd.DataFrame(ts_scalars[i][1]*np.ones(len(ts_df[0][1])), index=ts_df[0][1].index) # can simply choose one of the dfs, they have the same index at this point anyway
             ts_all[ts_scalars[i][0]] = ts_scalars[i][1]
+
+        ts_all = pd.concat(ts_all, axis=1) # concatenate along date
 
         return ts_all
 
@@ -331,7 +350,7 @@ class PrepareTimeSeries:
         start_date = end_date - timedelta(days=data["backfill_days"])
         backfill_dates = []
 
-        # Search through prev 7 days of original time series for backfilling
+        # Search through prev X=data["backfill_days"] days of original time series for backfilling
         ts_orig_all = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                     aggregates="average",
                                                     granularity=f"{data['granularity']}s",
@@ -356,18 +375,18 @@ class PrepareTimeSeries:
             backfill_month = now.month
             backfill_year = now.year
         else:
-            backfill_date = (now - timedelta(days=1)) #(now - timedelta(days=1))
+            backfill_date = (now - timedelta(days=1)) #(now - timedelta(hours=1))
             backfill_day = backfill_date.day
             backfill_month = backfill_date.month
             backfill_year = backfill_date.year
 
         SEC_SINCE_EPOCH = datetime(1970, 1, 1, 0, 0)
         start_time = datetime(backfill_year, backfill_month, backfill_day,
-                            pd.Timestamp.now().hour-1, data["backfill_min_start"])  # data["backfill_hour"], data["backfill_min_start"])
+                            data["backfill_hour"], data["backfill_min_start"])  # pd.Timestamp.now().hour-1, data["backfill_min_start"])
         start_time = (start_time - SEC_SINCE_EPOCH).total_seconds() * 1000  # convert to local time
 
         end_time = datetime(backfill_year, backfill_month, backfill_day,
-                            pd.Timestamp.now().hour-1, data["backfill_min_end"])
+                            data["backfill_hour"], data["backfill_min_end"])
         end_time = (end_time - SEC_SINCE_EPOCH).total_seconds() * 1000
 
         try:

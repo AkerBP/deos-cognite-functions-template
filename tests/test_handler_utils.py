@@ -3,9 +3,26 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import ast
+from cognite.client.testing import monkeypatch_cognite_client
+from cognite.client.data_classes import TimeSeries
+
 from src.handler_utils import PrepareTimeSeries
 from src.initialize import initialize_client
 from src.deploy_cognite_functions import deploy_cognite_functions, list_scheduled_calls
+
+CREATED_TIMESERIES = [
+    TimeSeries(
+        external_id="test_CF",
+        name="test_CF",
+        data_set_id=1832663593546318,
+        asset_id="17-FI-95710-286"
+    )
+]
+
+@pytest.fixture
+def cognite_client_mock():
+    with monkeypatch_cognite_client() as client:
+        client.time_series.create.return_value = CREATED_TIMESERIES
 
 @pytest.fixture
 def prepare_ts():
@@ -136,10 +153,11 @@ def test_get_schedules_and_calls(prepare_ts):
     assert schedule_id == None
     assert calls.empty
 
-def test_create_timeseries(prepare_ts):
+def test_create_timeseries(cognite_client_mock, prepare_ts):
     """Test that new Time Series object is created upon call.
 
     Args:
+        cognite_client_mock(cognite.client.testing.monkeypatch_cognite_client): mock used for CogniteClient
         prepare_ts (_type_): _description_
     """
     prepare_ts.ts_outputs = ["test_CF_create_timeseries"]
@@ -147,18 +165,26 @@ def test_create_timeseries(prepare_ts):
 
     true_asset_id = [7210022650246556]
     returned_asset_id = prepare_ts.create_timeseries()
+    # Assert correct cognite object has been called once
+    assert cognite_client_mock.time_series.create.call_count == 1
+    # Assert cognite object is called with correct arguments
+    assert [ts.dump() for ts in cognite_client_mock.time_series.create.call_args[0]
+            ] == [ts.dump() for ts in CREATED_TIMESERIES]
     assert returned_asset_id == true_asset_id
 
     # Assert that new time series object created
     prepare_ts.data["scheduled_calls"] = pd.DateFrame()
-    ts_output_retrieved = prepare_ts.client.time_series.list(name=prepare_ts.ts_outputs[0]).to_pandas()
-    assert not ts_output_retrieved.empty
+    ts_output_list = prepare_ts.client.time_series.list(name=prepare_ts.ts_outputs[0]).to_pandas()
+    assert not ts_output_list.empty
+    assert ts_output_list["external_id"] == prepare_ts.ts_outputs[0]
 
-    # Assert no duplicated time series object if already exists
     prepare_ts.data["ts_output"][prepare_ts.ts_outputs[0]]["exists"] = True
     prepare_ts.create_timeseries()
-    ts_output_retrieved_new = prepare_ts.client.time_series.list(name=prepare_ts.ts_outputs[0]).to_pandas()
-    assert ts_output_retrieved_new == ts_output_retrieved
+    # Assert correct cognite object has been called TWICE
+    assert cognite_client_mock.time_series.create.call_count == 2
+    # Assert no duplicated time series object if already exists
+    ts_output_list_new = prepare_ts.client.time_series.list(name=prepare_ts.ts_outputs[0]).to_pandas()
+    assert ts_output_list_new == ts_output_list
 
 def test_retrieve_orig_ts(prepare_ts):
     """Test that correct time series signal is retrieved.
@@ -171,36 +197,68 @@ def test_retrieve_orig_ts(prepare_ts):
     ts_in = prepare_ts.ts_inputs[0]
     ts_out = prepare_ts.ts_outputs[0]
 
+    # Test that full historic signal is retrieved if output not exists
     prepare_ts.data["ts_output"][prepare_ts.ts_outputs[0]]["exists"] = False
     data = prepare_ts.retrieve_orig_ts(ts_in, ts_out)
     first_date = data.index[0]
     last_date = data.index[-1]
     data_true = prepare_ts.client.time_series.list(name=ts_in).to_pandas()
+    data_true = prepare_ts.client.time_series.data.retrieve(external_id=ts_in,
+                                                       aggregates="average",
+                                                       granularity=f"{prepare_ts.data['granularity']}s",
+                                                       limit=-1).to_pandas()
     first_date_true = data_true.index[0]
     last_date_true = data_true.index[-1]
     assert first_date == first_date_true
     assert last_date == last_date_true
 
+    # Test that data only retrieved from current date is output exists
     prepare_ts.data["ts_output"][prepare_ts.ts_outputs[0]]["exists"] = True
     data = prepare_ts.retrieve_orig_ts(ts_in, ts_out)
     first_date = data.index[0]
     last_date = data.index[-1]
-    assert first_date.date == first_date_true.date
-    assert last_date == last_date_true
-
     data_true = prepare_ts.client.time_series.data.retrieve(external_id=ts_in,
                                                        aggregates="average",
                                                        granularity=f"{prepare_ts.data['granularity']}s",
-                                                       start=first_date_true,
-                                                       end=last_date_true).to_pandas()
+                                                       start=prepare_ts.data["start_time"],
+                                                       end=prepare_ts.data["end_time"]).to_pandas()
+
+    assert first_date.date == first_date_true.date
+    assert last_date == last_date_true
 
     assert data.squeeze().values == data_true.squeeze().values
 
 def test_get_ts_df(prepare_ts):
-    return
+    ts_data = prepare_ts.get_ts_df()
+    assert all([isinstance(data, float) or isinstance(data, pd.DataFrame) for data in ts_data])
 
-def test_align_time_series(prepare_ts):
-    return
+def test_align_time_series(cognite_client_mock, prepare_ts):
+    prepare_ts.ts_inputs = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", 56.2] # also testing for scalar
+    prepare_ts.ts_outputs = ["test_CF", "test_CF2"]
+    prepare_ts.update_ts("ts_inputs")
+    prepare_ts.update_ts("ts_output")
+
+    prepare_ts.create_timeseries()
+
+    prepare_ts.data = prepare_ts.get_orig_timeseries(eval(lambda x: x)) # dummy calculation (not applied here anyway)
+    ts_df = prepare_ts.get_ts_df()
+    ts_df_true = prepare_ts.align_time_series(ts_df)
+
+    # Internal dates may vary (some may have NaNs), but all should be truncated to same boundary dates
+    assert all(np.equal([df.index[0] for df in ts_df_true]))
+    assert all(np.equal([df.index[-1] for df in ts_df_true]))
+
+    # Assert latest possible start date
+    latest_start_date_true = np.max([df.index[0] for df in ts_df])
+    latest_start_date_all = [df.index[0] for df in ts_df_true]
+    assert all(date == latest_start_date_true for date in latest_start_date_all)
+    # Assert earliest possible end date
+    earliest_end_date_true = np.min([df.index[-1] for df in ts_df])
+    earliest_end_date_all = [df.index[-1] for df in ts_df_true]
+    assert all(date == earliest_end_date_true for date in earliest_end_date_all)
+
+    # Assert all return elements are DataFrames
+    assert all([isinstance(df, pd.DataFrame) for df in ts_df_true])
 
 
 def test_deploy_schedule(prepare_ts, deploy_schedule):

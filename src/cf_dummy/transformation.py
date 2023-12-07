@@ -1,3 +1,5 @@
+
+
 import pandas as pd
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from datetime import datetime
@@ -11,9 +13,9 @@ def main_daily_avg_drainage(data, ts):
         ts (pd.DataFrame): (single) input time series
 
     Returns:
-        pd.Series: data points for transformed signal
+        pd.DataFrame: data points for transformed signal
     """
-    ts = filter_ts(ts, data)
+    ts, ts_input_name = filter_ts(ts, data)
 
     try:
         ts["derivative"] = np.gradient(ts['smooth'], ts["time_sec"])
@@ -33,8 +35,9 @@ def main_daily_avg_drainage(data, ts):
     daily_avg_drainage = ts.groupby('Date')['derivative_excl_filling'].mean(
     )*data['tank_volume']/100  # avg drainage rate per DAY
 
-    return daily_avg_drainage
-
+    out_df = pd.DataFrame(daily_avg_drainage, index=daily_avg_drainage.index)
+    out_df = out_df.rename(columns={out_df.columns[0]: ts_input_name})
+    return out_df
 
 def filter_ts(ts, data):
     """Helper function: performs lowess smoothing
@@ -46,7 +49,8 @@ def filter_ts(ts, data):
     Returns:
         pd.DataFrame: smoothed signal
     """
-    vol_perc = ts[ts.columns[0]]
+    ts_input_name = ts.columns[0]
+    vol_perc = ts[ts_input_name]
     ts["time_sec"] = (ts.index - datetime(1970, 1, 1)).total_seconds()
 
     if "lowess_frac" in data:
@@ -68,4 +72,4 @@ def filter_ts(ts, data):
     ts.set_index('time_stamp', drop=True, append=False,
                  inplace=True, verify_integrity=False)
 
-    return ts
+    return ts, ts_input_name

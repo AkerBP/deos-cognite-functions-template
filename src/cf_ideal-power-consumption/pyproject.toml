@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cf-test"
+name = "cf-ideal-power-consumption"
 version = "0.1.0"
 description = ""
 authors = ["vetlenev <vetle.nevland@akerbp.com>"]
@@ -7,12 +7,12 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-python-dotenv = "^1.0.0"
-numpy = "^1.26.2"
 ipykernel = "^6.27.1"
-cognite-sdk = "^7.5.1"
+cognite-sdk = "^7.5.4"
 statsmodels = "^0.14.0"
+numpy = "^1.26.2"
 pandas = "^2.1.3"
+python-dotenv = "^1.0.0"
 
 
 [build-system]
