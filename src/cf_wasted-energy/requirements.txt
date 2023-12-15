@@ -1,10 +1,9 @@
 
  
-numpy 
-pandas 
-python-dotenv 
-statsmodels 
-cognite-sdk 
 ipykernel 
+numpy 
+python-dotenv 
+cognite-sdk 
+pandas 
 
 

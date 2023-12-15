@@ -1,3 +1,4 @@
+
 import pandas as pd
 import numpy as np
 
@@ -6,13 +7,10 @@ def main_ideal_power_consumption(data, ts_inputs):
 
     Args:
         data (dict): calculation-specific parameters for Cognite Function
-        ts_0 (pd.DataFrame): time series input 'VAL_17-FI-9101-286:VALUE'
-        ts_1 (pd.DataFrame): time series input 'VAL_17-PI-95709-258:VALUE'
-        ts_2 (pd.DataFrame): time series input 'VAL_11-PT-92363B:X.Value'
-        ts_3 (pd.DataFrame): time series input 'VAL_11-XT-95067B:Z.X.Value'
+        ts_inputs (pd.DataFrame): time series inputs 'VAL_17-FI-9101-286:VALUE', 'VAL_17-PI-95709-258:VALUE', 'VAL_11-PT-92363B:X.Value', 'VAL_11-XT-95067B:Z.X.Value'
 
     Returns:
-        pd.Series: data points of output time series
+        pd.DataFrame: data points of output time series
     """
     ideal_power_consumption = pd.DataFrame(np.zeros(ts_inputs.shape[0]), columns=["TEST_IdealPowerConsumption"], index=ts_inputs[ts_inputs.columns[0]].index)
     zero_condition = ts_inputs.iloc[:,3] > 0

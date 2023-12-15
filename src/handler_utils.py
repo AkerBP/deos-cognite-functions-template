@@ -141,6 +141,10 @@ class PrepareTimeSeries:
                 self.data["end_time"] = pd.to_datetime(date+timedelta(days=1))
 
                 for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+                    if not ts_inputs[ts_in]["exists"]:
+                        self.data["ts_input_today"][ts_in] = float(ts_in)
+                        continue
+
                     df_orig_today = self.retrieve_orig_ts(ts_in, ts_out)
                     self.data["ts_input_today"][ts_in] = df_orig_today[ts_in]
 
