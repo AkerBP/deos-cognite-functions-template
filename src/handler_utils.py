@@ -55,7 +55,7 @@ class PrepareTimeSeries:
         if field == "ts_input":
             self.data["ts_input"] = {str(name):{"exists":isinstance(name,str)} for name in self.ts_input_names} # include boolean to check if input is an already existing time series from CDF
         elif field == "ts_output":
-            self.data["ts_output"] = {name:{} for name in self.ts_output_names}
+            self.data["ts_output"] = {name:{"exists":False} for name in self.ts_output_names}
         else:
             self.data[field] = val
 
@@ -76,9 +76,12 @@ class PrepareTimeSeries:
         """
         client = self.client
 
-        end_date = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)
-        # from the start (00:00:00) of end_date
-        start_date = pd.to_datetime(end_date.date())
+        end_date = pd.Timestamp.now()
+        # start_date = pd.to_datetime(end_date.date())
+        start_date = end_date - timedelta(minutes=self.data["backfill_min_end"] - self.data["backfill_min_start"])
+        if "start_time" in self.data.keys():
+            start_date = self.data["start_time"] # overwrite default start time defined by schedule (relevant for certain cases, e.g., date-specific aggregated)
+
         self.data["start_time"] = start_date
         self.data["end_time"] = end_date
 
@@ -263,7 +266,7 @@ class PrepareTimeSeries:
                 start_date = first_date_orig
 
             df = pd.DataFrame()
-            # If no datapoints for current date, search backwards until date with last updated datapoint
+            # If no datapoints for current interval, search backwards until first interval with valid datapoints
             while df.empty:
                 ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
                                                         aggregates="average",

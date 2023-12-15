@@ -32,14 +32,20 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interv
         zip_name = "zip_handle.zip"
         zip_path = f"{folder_cf}/{zip_name}"
 
+        if data_dict["function_name"] == "cf_test": # for unit testing
+            parent = "/.."
+        else:
+            parent = ""
+
         with zipfile.ZipFile(zip_path, 'w') as zipf:
             try:
                 zipf.write(f'{folder_cf}/requirements.txt', arcname='requirements.txt')
-                zipf.write(f'{folder_cf}/../handler_utils.py', arcname='handler_utils.py')
+                zipf.write(f'{folder_cf}{parent}/../handler_utils.py', arcname='handler_utils.py')
                 zipf.write(f'{folder_cf}/handler.py', arcname='handler.py')
                 zipf.write(f'{folder_cf}/transformation.py', arcname='transformation.py')
-                zipf.write(f'{folder_cf}/../transformation_utils.py', arcname='transformation_utils.py')
+                zipf.write(f'{folder_cf}{parent}/../transformation_utils.py', arcname='transformation_utils.py')
             except:
+                print(folder_cf)
                 raise FileNotFoundError("Make sure you have the following three required files in your Cognite Function folder:\n" \
                                             "\trequirements.txt\n" \
                                             "\thandler.py\n" \

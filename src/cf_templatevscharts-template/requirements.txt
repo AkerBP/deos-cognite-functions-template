@@ -1,0 +1,11 @@
+
+
+pandas
+numpy
+python-dotenv
+cognite-sdk
+ipykernel
+pytest
+indsl
+
+

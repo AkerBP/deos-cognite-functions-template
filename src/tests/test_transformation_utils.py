@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import ast
-from src.handler_utils import PrepareTimeSeries, RunTransformations
-from src.initialize import initialize_client
+from handler_utils import PrepareTimeSeries, RunTransformations
+from initialize import initialize_client
 
 @pytest.fixture
 def prep_ts():
