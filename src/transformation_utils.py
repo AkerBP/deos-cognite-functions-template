@@ -1,6 +1,12 @@
 from typing import Any
 import numpy as np
 import pandas as pd
+import os
+import sys
+
+# parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# if parent_path not in sys.path:
+#     sys.path.append(parent_path)
 
 class RunTransformations:
     """Perform transformations/calculations on time series

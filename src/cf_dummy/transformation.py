@@ -63,6 +63,7 @@ def filter_ts(ts, data):
         delta = 0
     smooth = lowess(vol_perc, ts['time_sec'], is_sorted=True,
                     frac=frac, it=0, delta=delta*len(ts))
+    smooth = vol_perc
 
     df_smooth = pd.DataFrame(smooth, columns=["time_sec", "smooth"])
 

@@ -37,5 +37,6 @@ def handle(client: CogniteClient, data: dict) -> str:
     df_out = transform_timeseries.store_output_ts(df_out)
     client.time_series.data.insert_dataframe(df_out)
 
+    print(PrepTS.data["ts_input_backfill"])
     # Store original signal (for backfilling)
     return PrepTS.data["ts_input_backfill"]

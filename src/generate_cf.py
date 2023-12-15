@@ -11,10 +11,10 @@ def generate_cf(cf_name: str, add_packages: list = []):
     if not os.path.exists(cf_path):
         os.mkdir(cf_path)
         with open(cf_path+"/__init__.py", "w") as file:
-            print(f"Writing __init__.py in ...")
+            print(f"Writing __init__.py ...")
             file.close()
         with open(cf_path+"/handler.py", "w") as file:
-            print(f"Writing handler.py in ...")
+            print(f"Writing handler.py ...")
             file.write(write_handle())
             file.close()
         with open(cf_path+"/transformation.py", "w") as file:
@@ -22,8 +22,12 @@ def generate_cf(cf_name: str, add_packages: list = []):
             file.write(write_transformation())
             file.close()
 
-    # Copy template dependency requirements to cf subfolder
+    if cf_name == "test":
+        get_toml_dependencies(path_to_cf=cf_path, path_to_toml="../../", include_version=True)
+        return
+
     get_toml_dependencies(path_to_cf=cf_path, path_to_toml="../", include_version=True)
+    # Copy template dependency requirements to cf subfolder
 
     os.chdir(cf_path)
     add_packages = add_packages + [str(line.strip()) for line in open("requirements.txt", "r") if len(line.strip()) > 0]
@@ -32,8 +36,12 @@ def generate_cf(cf_name: str, add_packages: list = []):
     src_dir = os.path.dirname(os.getcwd())
     # Initialize Poetry environment in cf subfolder
     run_poetry_command("poetry init")
+
     for package in add_packages:
-        run_poetry_command(f"poetry add {package}")
+        if package == "indsl":
+            run_poetry_command(f"poetry add {package} --python ^3.11")
+        else:
+            run_poetry_command(f"poetry add {package}")
     run_poetry_command("poetry install")
 
     # Remove versioning for requirements.txt (NB: may need to manually look into requirements.txt afterwards to ensure internal consistency!)
@@ -125,7 +133,7 @@ def write_transformation():
     return '''
 import pandas as pd
 
-def main_calculation_A(data, ts_inputs):
+def main_test(data, ts_inputs):
     """Sample main function for transforming a set of input timeseries to
     produce a set of associated output time series.
 
