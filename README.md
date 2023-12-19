@@ -202,18 +202,3 @@ On the other hand, there are also areas where the Cognite Functions Template is 
 - While you can contribute with new functions to the `indsl` library in Charts, the deployment has to go through pull requests with the Cognite team, delaying the time for performing time series analysis. With the Cognite Functions Template, the plan is that calculations on time series from a governed dataset is seamlessly validated by the associated domain/team. We believe this internal deployment process is more transparent and much faster than going through the Cognite team.
 
 In the future, it might be possible to generate own Charts environments isolated from the "global" Charts environment (https://hub.cognite.com/developer-and-user-community-134/isolated-calculations-in-charts-2568). This will allow teams in your organization generate calculations that are specific for your environment without overwhelming or "polluting" the global Charts.
-
-## *OPTIONAL READ:* Calculation of drainage rate
-This section gives the mathematical and technical details how to calculate drainage rate from a time series of volume percentage - the particular case considered in this project. If you are only interested in deployment of Cognite Functions in general, we recommend jumping to section Update time series at prescribed schedules.
-
-Drainage rate is the amount of a fluid entering/leaving the tank, here given in units of [L/min]. The input signal is sampled with a granularity of one minute. To denoise the signal, we perform `lowess` filtering using the`statsmodels` Python package. It computes locally weighted fits, which can be quite time consuming for many datapoints. Since our initial write to the dataset spans all historic data, there are potentially a lot of computations. From our experiments, filtering a 1-minute granularity signal over three years takes around 30 minutes. It is possible to reduce computations by adjusting the `delta` parameter, which specifies the threshold interval between datapoint for which to substitute weighted regression with linear regression. Setting `delta=5e-4*len(vol_perc)` reduces runtime to about 90 seconds. Apart from the initial write, filtering is only performed on datapoints from the most recent date. This allow us to rely entirely on weighted regression, i.e., `delta=0`. We use 1% of the datapoints to compute the local regression at a particular point in `time`. Lowess filtering is run by calling
-```
-smooth = lowess(vol_perc, time, is_sorted=True,
-                frac=0.01, it=0, delta=delta)
-```
-
-After filtering, the drainage rate is calculated as the derivative of the volume percentage. For this, we use `numpy`s `gradient` function, operating on the full vector of datapoints.
-```
-drainage_rate = np.gradient(smooth, time)
-```
-To get the daily average leakage rate, we group the data by date, calculate the mean value for each date. To get in units of [L/min] we multiply by tank volume and divide by 100.
