@@ -80,7 +80,7 @@ class PrepareTimeSeries:
         ts_outputs = self.data["ts_output"]
 
         # TODO TODO TODO TODO ----------------------
-        end_date = pd.Timestamp.now() #- timedelta(days=1) #TODO: SUBTRACTING ONE DAY ONLY FOR TESTING !
+        end_date = pd.Timestamp.now()# - timedelta(days=1) #TODO: SUBTRACTING ONE DAY ONLY FOR TESTING !
         # TODO TODO TODO TODO ----------------------
 
         start_date = end_date - timedelta(minutes=int(self.data["cron_interval_min"]))
