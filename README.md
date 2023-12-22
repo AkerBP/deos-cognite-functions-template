@@ -172,6 +172,8 @@ client.functions.schedules.create(
 
 ```
 **Steps 2-5 above are collectively run by the function `deploy_cognite_functions.py`.**
+### 6. Repeat calculation for other time series'
+If you want to run the same calculation for another time series input, you simply create a new schedule for the same Cognite Function. To do so, in `run_functions.ipynb` modify `data_dict` with desired parameters (important to set a unique name of the schedule with the `schedule_name` key). Since the Cognite Function is already generated, you can skip running `generate_cf` and jump straight to the initial transformation by running `deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)` and thereafter set up the schedule by running `deploy_cognite_functions(data_dict, client, single_call=False, scheduled_call=True)`.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
