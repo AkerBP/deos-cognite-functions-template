@@ -1,12 +1,15 @@
+
 import os
 import sys
+from datetime import datetime
 
+# Set file to system path to allow relative import from parent folder
 parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
 from cognite.client._cognite_client import CogniteClient
-from handler_utils import PrepareTimeSeries #get_orig_timeseries
+from handler_utils import PrepareTimeSeries
 from transformation_utils import RunTransformations
 from transformation import *
 
@@ -24,20 +27,44 @@ def handle(client: CogniteClient, data: dict) -> str:
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
     PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
-    data = PrepTS.get_orig_timeseries(eval(calculation))
-    ts_df = PrepTS.get_ts_df()
-    ts_df = PrepTS.align_time_series(ts_df) # align input time series to cover same time period
+    PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
-    # STEP 2: Run transformations
-    transform_timeseries = RunTransformations(data, ts_df)
-    ts_out = transform_timeseries(eval(calculation))
+    ts_in = PrepTS.data["ts_input_today"]
+    all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
 
-    # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
-    df_out = transform_timeseries.store_output_ts(ts_out)
-    client.time_series.data.insert_dataframe(df_out)
+    if not all_inputs_empty: # can't run calculations if any time series is empty for defined interval
+        df_in = PrepTS.get_ts_df()
+        df_in = PrepTS.align_time_series(df_in) # align input time series to cover same time period
+
+        # STEP 2: Run transformations
+        transform_timeseries = RunTransformations(PrepTS.data, df_in)
+        df_out = transform_timeseries(eval(calculation))
+
+        # STEP 2.5: Assemble aggregations (if relevant) - think it will work for schedules that overlap aggregation periods
+        df_out_prev_exists = not client.time_series.data.retrieve_dataframe(external_id=list(PrepTS.data["ts_output"].keys())).empty
+
+        if "period" in PrepTS.data["aggregate"] and "type" in PrepTS.data["aggregate"] and df_out_prev_exists:
+
+            end_time_previous = PrepTS.data["start_time"]
+            start_time_previous = PrepTS.get_aggregated_start_time()
+
+            df_out_prev = client.time_series.data.retrieve_dataframe(external_id=list(PrepTS.data["ts_output"].keys()),
+                                                                    start=start_time_previous,
+                                                                    end=end_time_previous)
+            df_out_prev.index = pd.to_datetime(df_out_prev.index)
+            df_out.index = pd.to_datetime(df_out.index)
+
+            df_out = df_out.join(df_out_prev)
+            df_out = df_out.apply(lambda row: getattr(row, PrepTS.data["aggregate"]["type"])(), axis=1)
+
+            df_out = pd.DataFrame(df_out, columns=PrepTS.data["ts_input_names"])
+
+        # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
+        df_out = transform_timeseries.store_output_ts(df_out)
+        client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return data["ts_input_backfill"]
+    return PrepTS.data["ts_input_backfill"]
 
 
 if __name__ == '__main__':
@@ -54,9 +81,13 @@ if __name__ == '__main__':
     # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
     ts_input_names = ["VAL_11-PT-92363B:X.Value"]
     # ts_output_names = ["VAL_17-FI-9101-286:CDF.IdealPowerConsumption"]
-    ts_output_names = ["TemplateVsCharts_Template"]
-    function_name = "templatevscharts-template" #
-    calculation_function = "exp" #
+    ts_output_names = ["VAL_11-PT-92363B:X.HOURLY.AVG.DRAINAGE"]
+    function_name = "hourly-avg-drainage"
+    calculation_function = "hourly_avg_drainage"
+
+    aggregate = {}
+    aggregate["period"] = "hour" # ['sec', 'min', 'hour', 'day', 'month', 'year']
+    aggregate["type"] = "mean"
 
     sampling_rate = 60 #
     cron_interval_min = str(15) #
@@ -76,13 +107,16 @@ if __name__ == '__main__':
             'calculation_function': f"main_{calculation_function}",
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
+            'cron_interval_min': cron_interval_min,
+            'aggregate': aggregate,
             'backfill_days': backfill_days,
             'backfill_hour': 10, # backfilling to be scheduled at last hour of day as default
             'backfill_min_start': 10, 'backfill_min_end': 10 + int(cron_interval_min),
             'calc_params': {
                 'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
                 'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta
-            }}
+            },
+            'testing': False}
 
     # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
     new_df = handle(client, data_dict)

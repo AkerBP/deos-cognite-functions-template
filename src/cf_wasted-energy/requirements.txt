@@ -1,9 +1,10 @@
 
  
-ipykernel 
+pandas 
 numpy 
 python-dotenv 
+pytest 
+ipykernel 
 cognite-sdk 
-pandas 
 
 

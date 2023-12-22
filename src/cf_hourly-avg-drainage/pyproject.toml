@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cf-templatevscharts-template"
+name = "cf-hourly-avg-drainage"
 version = "0.1.0"
 description = ""
 authors = ["vetlenev <vetle.nevland@akerbp.com>"]
@@ -7,12 +7,13 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+pytest = "^7.4.3"
 pandas = "^2.1.4"
 numpy = "^1.26.2"
-python-dotenv = "^1.0.0"
 cognite-sdk = "^7.6.0"
+python-dotenv = "^1.0.0"
 ipykernel = "^6.27.1"
-pytest = "^7.4.3"
+statsmodels = "^0.14.1"
 
 
 [build-system]

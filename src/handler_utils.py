@@ -76,17 +76,17 @@ class PrepareTimeSeries:
         """
         client = self.client
 
-        end_date = pd.Timestamp.now()
-        # start_date = pd.to_datetime(end_date.date())
-        start_date = end_date - timedelta(minutes=self.data["backfill_min_end"] - self.data["backfill_min_start"])
-        if "start_time" in self.data.keys():
-            start_date = self.data["start_time"] # overwrite default start time defined by schedule (relevant for certain cases, e.g., date-specific aggregated)
+        ts_inputs = self.data["ts_input"]
+        ts_outputs = self.data["ts_output"]
+
+        # TODO TODO TODO TODO ----------------------
+        end_date = pd.Timestamp.now() #- timedelta(days=1) #TODO: SUBTRACTING ONE DAY ONLY FOR TESTING !
+        # TODO TODO TODO TODO ----------------------
+
+        start_date = end_date - timedelta(minutes=int(self.data["cron_interval_min"]))
 
         self.data["start_time"] = start_date
         self.data["end_time"] = end_date
-
-        ts_inputs = self.data["ts_input"]
-        ts_outputs = self.data["ts_output"]
 
         for ts_out_name in ts_outputs.keys():
             ts_leak = client.time_series.list(
@@ -131,11 +131,14 @@ class PrepareTimeSeries:
             backfill_dates = []
             # TODO: Change to 23 hours and 45 minutes.
             # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
-            if end_date.hour == self.data["backfill_hour"] and \
-            end_date.minute >= self.data["backfill_min_start"] and \
-            end_date.minute < self.data["backfill_min_end"] \
-            and data_out["exists"]:
-                ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
+            if self.data["testing"]:
+                if int(str(end_date.minute)[-1]) == 0:
+                    ts_input_backfill, backfill_dates = self.check_backfilling(ts_in, testing=True)
+            elif end_date.hour == self.data["backfill_hour"] and \
+                end_date.minute >= self.data["backfill_min_start"] and \
+                end_date.minute < self.data["backfill_min_end"] \
+                and data_out["exists"]:
+                    ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
 
             self.data["ts_input_backfill"][ts_in] = ts_input_backfill
             # STEP 4: Perform backfilling on dates with discrepancies in datapoints
@@ -265,24 +268,19 @@ class PrepareTimeSeries:
                                                                 limit=1).to_pandas().index[0]
                 start_date = first_date_orig
 
-            df = pd.DataFrame()
-            # If no datapoints for current interval, search backwards until first interval with valid datapoints
-            while df.empty:
-                ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
-                                                        aggregates="average",
-                                                        granularity=f"{data['granularity']}s",
-                                                        start=pd.to_datetime(
-                                                            start_date),
-                                                        end=pd.to_datetime(
-                                                            end_date),
-                                                        )
 
-                df = ts_orig.to_pandas()
-                start_date = pd.to_datetime(start_date - timedelta(days=1)
-                                            ).date()  # start of previous date
-                end_date = pd.to_datetime(start_date + timedelta(days=1))
-                if df.empty:
-                    print(f"No data for time series '{ts_in}' for current date. Reversing to date: {start_date}")
+            ts_orig = client.time_series.data.retrieve(external_id=ts_orig_extid,
+                                                    aggregates="average",
+                                                    granularity=f"{data['granularity']}s",
+                                                    start=pd.to_datetime(
+                                                        start_date),
+                                                    end=pd.to_datetime(
+                                                        end_date),
+                                                    )
+
+            df = ts_orig.to_pandas()
+            if df.empty:
+                print(f"No data for time series '{ts_in}' for interval: [{start_date}, {end_date}]. Skipping calculations.")
 
             df = df.rename(columns={ts_orig_extid + "|average": ts_in})
             return df
@@ -328,14 +326,58 @@ class PrepareTimeSeries:
         return ts_all
 
     def get_ts_df(self) -> list:
-        """List input time series' from CDF as dataframes and scalars as floats
+        """List all input time series as dataframes objects
 
         Returns:
-            (list): list of time series dataframes (and potentially scalars)
+            (list): list of time series dataframes
         """
         ts_data = self.data["ts_input_today"]
         ts_data = [ts_data[name] if isinstance(ts_data[name], float) else pd.DataFrame(ts_data[name]) for name in ts_data]
         return ts_data
+
+    def get_aggregated_start_time(self) -> datetime:
+        """For aggregated calculations, return start time of current aggregated period.
+
+        Raises:
+            NotImplementedError: Aggregation not supported for periods other than "second", "minute", "hour", "day", "month" or "year".
+
+        Returns:
+            (datetime): start time of aggregated period
+        """
+        end_time_previous = self.data["start_time"] # end time of previous scheduled call
+
+        if self.data["aggregate"]["period"] == "second":
+            start_time_previous = datetime(end_time_previous.year,
+                                            end_time_previous.month,
+                                            end_time_previous.day,
+                                            end_time_previous.hour,
+                                            end_time_previous.minute,
+                                            end_time_previous.second)
+        elif self.data["aggregate"]["period"] == "minute":
+            start_time_previous = datetime(end_time_previous.year,
+                                            end_time_previous.month,
+                                            end_time_previous.day,
+                                            end_time_previous.hour,
+                                            end_time_previous.minute)
+            # start_time_previous = end_time_previous - PrepTS.data["cron_interval_min"]
+        elif self.data["aggregate"]["period"] == "hour":
+            start_time_previous = datetime(end_time_previous.year,
+                                            end_time_previous.month,
+                                            end_time_previous.day,
+                                            end_time_previous.hour)
+        elif self.data["aggregate"]["period"] == "day":
+            start_time_previous = datetime(end_time_previous.year,
+                                            end_time_previous.month,
+                                            end_time_previous.day)
+        elif self.data["aggregate"]["period"] == "month":
+            start_time_previous = datetime(end_time_previous.year,
+                                            end_time_previous.month)
+        elif self.data["aggregate"]["period"] == "year":
+            start_time_previous = datetime(end_time_previous.year)
+        else:
+            raise NotImplementedError(f"Cognite Functions Template does not support calculations for aggregation period '{self.data['aggregate']['period']}'")
+
+        return start_time_previous
 
     def check_backfilling(self, ts_input_name: str, testing: bool = False) -> Tuple[dict, list]:
         """Runs a backfilling for last self.data["backfill_days"] days of input time series.
@@ -374,26 +416,27 @@ class PrepareTimeSeries:
         scheduled_calls = data["scheduled_calls"]
 
         # ----------------
-        now = pd.Timestamp.now().date() #datetime(2023, 11, 14, 16, 30)  # provided in local time
+        now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
         # ----------------
 
         if testing: # when testing backfilling, we only move some minutes back in time, not an entire day
-            backfill_day = now.day
-            backfill_month = now.month
-            backfill_year = now.year
+            backfill_date = (now - timedelta(minutes=10))
+            backfill_hour = data["backfill_hour"]#backfill_date.hour
+            print("Now #2: ", backfill_hour)
         else:
             backfill_date = (now - timedelta(days=1)) #(now - timedelta(hours=1))
-            backfill_day = backfill_date.day
-            backfill_month = backfill_date.month
-            backfill_year = backfill_date.year
+            backfill_hour = data["backfill_hour"]
+        backfill_day = backfill_date.day
+        backfill_month = backfill_date.month
+        backfill_year = backfill_date.year
 
         SEC_SINCE_EPOCH = datetime(1970, 1, 1, 0, 0)
         start_time = datetime(backfill_year, backfill_month, backfill_day,
-                            data["backfill_hour"], data["backfill_min_start"])  # pd.Timestamp.now().hour-1, data["backfill_min_start"])
+                            backfill_hour, data["backfill_min_start"])  # pd.Timestamp.now().hour-1, data["backfill_min_start"])
         start_time = (start_time - SEC_SINCE_EPOCH).total_seconds() * 1000  # convert to local time
 
         end_time = datetime(backfill_year, backfill_month, backfill_day,
-                            data["backfill_hour"], data["backfill_min_end"])
+                            backfill_hour, data["backfill_min_end"])
         end_time = (end_time - SEC_SINCE_EPOCH).total_seconds() * 1000
 
         try:
@@ -403,6 +446,10 @@ class PrepareTimeSeries:
         except:  # No scheduled call from yesterday --> nothing to compare with to do backfilling!
             print(
                 f"Input {ts_input_name}: No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_days']} days.")
+            if testing:
+                print("Start time: ", start_time)
+                print("End time: ", end_time)
+                print("Scheduled calls: ", scheduled_calls)
             orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
             return orig_as_dict, backfill_dates
 
@@ -461,9 +508,9 @@ class PrepareTimeSeries:
             print(f"Backfilling dates with DELETED data: {decreased_dates.values}")
             backfill_dates = increased_dates.union(decreased_dates, sort=True)
 
-        if testing:
-            return ts_orig_all, yesterday_df, backfill_dates, \
-                    num_dates_old, num_dates_new
+        # if testing:
+        #     return ts_orig_all, yesterday_df, backfill_dates, \
+        #             num_dates_old, num_dates_new
         # return recent original signal
         orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
         return orig_as_dict, backfill_dates

@@ -1,10 +1,12 @@
 
 import pandas as pd
+
+import pandas as pd
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from datetime import datetime
 import numpy as np
 
-def main_daily_avg_drainage(data, ts):
+def main_hourly_avg_drainage(data, ts):
     """Calculation function
 
     Args:
@@ -30,14 +32,16 @@ def main_daily_avg_drainage(data, ts):
     ts.index = pd.to_datetime(ts['time_stamp'])
     ts['Date'] = ts.index.date
     ts["Date"] = pd.to_datetime(ts["Date"])
+    ts['Hour'] = ts.index.hour
 
-    daily_avg_drainage = ts.groupby('Date')['derivative_excl_filling'].mean(
-    )*data['tank_volume']/100  # avg drainage rate per DAY
-
-    out_df = pd.DataFrame(daily_avg_drainage, index=daily_avg_drainage.index)
+    daily_avg_hour = ts.groupby(['Date', 'Hour'])['derivative_excl_filling'].mean(
+    )*data['tank_volume']/100  # avg drainage rate per HOUR
+    out_df = pd.DataFrame(daily_avg_hour, index=daily_avg_hour.index)
     out_df = out_df.rename(columns={out_df.columns[0]: ts_input_name})
-    return out_df
+    # Convert MultiIndex to single Datetime index
+    out_df.index = pd.to_datetime(out_df.index.get_level_values("Date").astype(str) + " " + out_df.index.get_level_values("Hour").astype(str) + ":00:00")
 
+    return out_df
 
 def filter_ts(ts, data):
     """Helper function: performs lowess smoothing
@@ -73,3 +77,38 @@ def filter_ts(ts, data):
                  inplace=True, verify_integrity=False)
 
     return ts, ts_input_name
+
+def main_B(data, ts_inputs):
+    """Other sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
+
+    Args:
+        data (dict): calculation-specfic parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    ts_0 = ts_inputs.iloc[:,0] # first time series in dataframe
+    ts_1 = ts_inputs.iloc[:,1] # second time series ...
+    ts_2 = ts_inputs.iloc[:,2]
+
+    ts_out = ts_0.max() + 2*ts_1 + ts_0*ts_2/5
+
+    return pd.DataFrame(ts_out) # ensure output given as dataframe
+
+def main_exp(data, ts_inputs):
+    """Other sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
+
+    Args:
+        data (dict): calculation-specfic parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    ts_out = exp(ts_inputs.iloc[:,0])
+    ts_out = ts_out / 10.0
+
+    return pd.DataFrame(ts_out) # ensure output given as dataframe
