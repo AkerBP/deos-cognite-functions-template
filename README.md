@@ -70,7 +70,7 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this pupose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. There are six primary steps, and the jupyter file `src/run_functions.ipynb` is devoted for this purpose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
 The `src` folder is organized as follows.
 ```markdown
 ├── src
