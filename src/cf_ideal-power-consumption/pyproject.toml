@@ -7,10 +7,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-python-dotenv = "^1.0.0"
+pandas = "^2.1.4"
+pytest = "^7.4.3"
 ipykernel = "^6.27.1"
-pandas = "^2.1.3"
-cognite-sdk = "^7.5.4"
+cognite-sdk = "^7.8.4"
+python-dotenv = "^1.0.0"
 numpy = "^1.26.2"
 
 

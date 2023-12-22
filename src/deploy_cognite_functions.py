@@ -6,7 +6,7 @@ from typing import Tuple
 from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
 
-def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interval: str,
+def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
                              single_call=True, scheduled_call=False):
     """General procedure to deploy Cognite Functions through schedule,
     using zip-file approach to link data to a designated dataset
@@ -14,7 +14,6 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interv
     Args:
         data_dict (list): Dictionary with input data and parameters for the Cognite Function
         client (CogniteClient): instantiated Cognite Client
-        cron_interval (str): Minute-interval to run schedule on
         single_call (bool, optional): If running a single call to the Cognite Function. This is necessary for first transformation of input time series. Defaults to True.
         scheduled_call (bool, optional): If running Cognite Function on schedule. Defaults to False.
 
@@ -78,14 +77,18 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient, cron_interv
 
     # AFTER initial call, function can be scheduled
     if scheduled_call:
-        print("Setting up Cognite Function schedule ...")
+        now = pd.Timestamp.now()
+        cron_interval = data_dict["cron_interval_min"]
+
+        print(f"Setting up Cognite Function schedule at time {now} ...")
         client.functions.schedules.create(
-            name=f"{data_dict['function_name']}",
+            name=f"{data_dict['schedule_name']}",
             cron_expression=f"*/{cron_interval} * * * *", # every cron_interval min
             function_id=cognite_function.id,
             #client_credentials=client,
             description=f"Calculation scheduled every {cron_interval} minute",
-            data=data_dict
+            data=data_dict,
+
         )
         print("... Done")
 
@@ -107,12 +110,14 @@ def list_scheduled_calls(data_dict: dict, client: CogniteClient) -> Tuple[int, p
                 name=data_dict["function_name"]).to_pandas().id[0]
     except:
         raise NotImplementedError(f"No schedule for function {data_dict['function_name']} exists.")
+
     all_calls = my_func.list_calls(
                 schedule_id=my_schedule_id, limit=-1).to_pandas()
+
     while all_calls.empty: # wait for first call
         time.sleep(1)
         all_calls = my_func.list_calls(
                 schedule_id=my_schedule_id, limit=-1).to_pandas()
-    print(f"Calls for Cognite Function '{my_func.name}':\n{all_calls.tail()}")
+    print(f"Latest call for Cognite Function '{my_func.name}':\n{all_calls.iloc[0]}")
 
     return my_schedule_id, all_calls

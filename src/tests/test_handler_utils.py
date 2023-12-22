@@ -75,10 +75,10 @@ LIST_SCHEDULED_CALLS = [
 def cognite_client_mock():
     with monkeypatch_cognite_client() as client:
         client.time_series.create.return_value = CREATED_TIMESERIES
-        client.functions.retrieve.return_value = RETRIEVED_FUNCTION
-        client.functions.schedules.create.return_value = CREATED_SCHEDULE
-        client.functions.schedules.list.return_value = LIST_SCHEDULES
-        client.functions.retrieve.list_calls.return_value = LIST_SCHEDULED_CALLS
+        # client.functions.retrieve.return_value = RETRIEVED_FUNCTION
+        # client.functions.schedules.create.return_value = CREATED_SCHEDULE
+        # client.functions.schedules.list.return_value = LIST_SCHEDULES
+        # client.functions.retrieve.list_calls.return_value = LIST_SCHEDULED_CALLS
         return client
 
 
@@ -91,14 +91,20 @@ def prepare_ts(cognite_client_mock):
     load_dotenv("../../handler-data.env")
 
     data_dict = {"cdf_env":"dev",
-                 "backfill_days": 1/24, # backfill one hours back in time
-                 "scheduled_calls": pd.DataFrame(),
-                 "dataset_id": str(os.getenv("DATASET_ID"))}
+                 'testing': True,
+                 "ts_input_names": ts_input_names,
+                 "ts_output_names": ts_output_names,
+                 'granularity': 10,
+                 'aggregate': {},
+                 "backfill_days": 1/(24), # backfill 1 hour back in time
+                 "dataset_id": str(os.getenv("DATASET_ID")),
+                 "calc_params": {}}
 
     client = initialize_client(data_dict["cdf_env"], path_to_env="../../authentication-ids.env")
-    data_dict["client"] = client
+    # data_dict["client"] = client
 
-    return PrepareTimeSeries(ts_input_names, ts_output_names, cognite_client_mock, data_dict)
+    prepTS = PrepareTimeSeries(ts_input_names, ts_output_names, client, data_dict)
+    return prepTS
 
 @pytest.fixture
 def deploy_schedule(prepare_ts):
@@ -113,29 +119,39 @@ def deploy_schedule(prepare_ts):
     import time
     from datetime import datetime, timedelta
 
-    prepare_ts.client = prepare_ts.data["client"]
+    # prepare_ts.client: monkeypatch test client
+    # prepare_ts.data["client"]: default client
+    # prepare_ts.client = prepare_ts.data["client"]
 
+    prepare_ts.data["scheduled_calls"] = pd.DataFrame()
     ts_orig_input_name = prepare_ts.ts_input_names[0]
 
     ts_input_name = "VAL_17-FI-9101-286:VALUE.COPY"
     prepare_ts.ts_output_names = [ts_input_name] # this is NOT output - it is a copy of the input, but ts_output is demanded by create_timeseries() function
     prepare_ts.update_ts("ts_output")
     prepare_ts.create_timeseries()
-
+    time.sleep(5) # pause some seconds to let (copied) Time Series object finish creating
+    # update input time series after created the copy
+    prepare_ts.ts_input_names = [ts_input_name]
+    prepare_ts.data["ts_input_names"] = [ts_input_name]
+    prepare_ts.update_ts("ts_input")
+    # also update output time series
     ts_output_name = "test_CF"
     prepare_ts.ts_output_names = [ts_output_name]
+    prepare_ts.data["ts_output_names"] = [ts_output_name]
     prepare_ts.update_ts("ts_output")
     prepare_ts.create_timeseries()
 
-    prepare_ts.data["start_time"] = datetime(2023, 10, 10, 1)
-    prepare_ts.data["end_time"] = datetime(2023, 10, 10, 4)
+    del prepare_ts.data["scheduled_calls"] # not JSON serializable - need to remove before calling
 
     ts_orig = prepare_ts.client.time_series.list(name=ts_orig_input_name).to_pandas()
     ts_extid = ts_orig.external_id[0]
     # Insert datapoints into copied input time series
+    end_time = pd.Timestamp.now()
+    start_time = end_time - timedelta(days=5)
     input_data = prepare_ts.client.time_series.data.retrieve(external_id=ts_extid,
-                                                             start=pd.to_datetime(prepare_ts.data["start_time"]),
-                                                             end=pd.to_datetime(prepare_ts.data["end_time"]),
+                                                             start=pd.to_datetime(start_time),
+                                                             end=pd.to_datetime(end_time),
                                                              limit=-1).to_pandas()
 
     input_data = input_data.rename(columns={input_data.columns[0]: ts_input_name})
@@ -143,32 +159,34 @@ def deploy_schedule(prepare_ts):
 
     cdf_env = "dev"
     prepare_ts.data["cdf_env"] = cdf_env
-    cron_interval = 1
-    prepare_ts.data["cron_interval"] = cron_interval
+    cron_interval = str(1)
+    prepare_ts.data["cron_interval_min"] = cron_interval
     prepare_ts.data["function_name"] = "cf_test"
+    prepare_ts.data["schedule_name"] = "cf_test"
     prepare_ts.data["calculation_function"] = "main_test"
 
     generate_cf("test")
     # First: Make single call to function to perform initial transformation
-    deploy_cognite_functions(prepare_ts.data, prepare_ts.client, cron_interval,
+    deploy_cognite_functions(prepare_ts.data, prepare_ts.client,
                             True, False)
-
     # Let backfill period be current timestamp - return argument to be compared to
     now = pd.Timestamp.now()
-    while now.minute >= 59:
+    while int(str(now.minute)[-1]) < 9 or now.second < 50: # create schedule at 9th minute, first call then at 0th minute for next 10-min period
         time.sleep(1)
         now = pd.Timestamp.now()
     prepare_ts.data["backfill_hour"] = now.hour
-    prepare_ts.data["backfill_min_start"] = now.minute
-    prepare_ts.data["backfill_min_end"] = now.minute + 1
+    prepare_ts.data["backfill_min_start"] = 0#now.minute
+    prepare_ts.data["backfill_min_end"] = 1#now.minute + 1
+    print("Now #1: ", now.hour)
     # Then: Run function on schedule
     deployed_time_start = datetime(now.year, now.month, now.day, now.hour, now.minute)
 
-    deploy_cognite_functions(prepare_ts.data, prepare_ts.client, cron_interval,
+    deploy_cognite_functions(prepare_ts.data, prepare_ts.client,
                             False, True)
 
     schedule_id, all_calls = list_scheduled_calls(prepare_ts.data, prepare_ts.client)
-    while len(all_calls) < 10: # wait until we have total of 10 calls from schedule
+
+    while len(all_calls) < 11: # wait until we have total of 11 calls from schedule (1st call is first backfilling, 11th call is second backfilling)
         time.sleep(30)
         schedule_id, all_calls = list_scheduled_calls(prepare_ts.data, prepare_ts.client)
 
@@ -176,8 +194,9 @@ def deploy_schedule(prepare_ts):
 
     get_func = prepare_ts.client.functions.retrieve(external_id=prepare_ts.data["function_name"])
 
-    last_backfill_id = all_calls.id[0]#get_func.retrieve_call(id=schedule_id)
+    last_backfill_id = all_calls.id[len(all_calls)-1] # [len(all_calls)-1] retrieves first backfilling schedule
     last_backfill_call = get_func.retrieve_call(id=last_backfill_id)
+    print("Response:", last_backfill_call.get_response())
     output_dict = ast.literal_eval(last_backfill_call.get_response())[
             ts_input_name]
 
