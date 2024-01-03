@@ -31,7 +31,7 @@ def main_hourly_avg_drainage(data, ts):
     ts.reset_index(inplace=True)
     ts.index = pd.to_datetime(ts['time_stamp'])
     ts['Date'] = ts.index.date
-    ts["Date"] = pd.to_datetime(ts["Date"])
+    # ts["Date"] = pd.to_datetime(ts["Date"])
     ts['Hour'] = ts.index.hour
 
     daily_avg_hour = ts.groupby(['Date', 'Hour'])['derivative_excl_filling'].mean(
