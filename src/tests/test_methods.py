@@ -15,7 +15,7 @@ import numpy as np
 from cognite.client.data_classes import TimeSeries
 
 from initialize import initialize_client
-from handler import handle
+from cf_test.handler import handle
 from tests.utils import create_timeseries, lowess_smoothing, make_dummy_df
 
 # ----- CDF specific tests -----
@@ -232,5 +232,29 @@ def test_derivative(retrieve_timeseries):
     deriv_bnd = df["deriv"].apply(
         lambda x: 0 if x > deriv_excl or pd.isna(x) else x)
     assert np.all(deriv_bnd <= deriv_excl)
+
+
+def test_aggregate():
+    """Test that running aggregates return correct data over aggregating period (here: hourly).
+    """
+    date_range = pd.date_range(start=datetime(2023,12,1,0),
+                               end=datetime(2023,12,1,2,30),
+                               periods=15)
+    data = [4,3,6,6,3,8,-3,2,5,10,20,2,5,1,10]
+    df = pd.DataFrame(data, index=date_range, columns=["data"])
+
+    df["date"] = pd.to_datetime(df.index).date
+    df["hour"] = pd.to_datetime(df.index).hour
+
+    hourly_avg = df.groupby(["date", "hour"])["data"].mean()
+
+    hourly_avg_df = pd.DataFrame(hourly_avg, index=hourly_avg.index)
+    hourly_avg_df = hourly_avg_df.rename(columns={hourly_avg_df.columns[0]: "data"})
+    hourly_avg_df.index = pd.to_datetime(hourly_avg_df.index.get_level_values("Date").astype(str) + " " + hourly_avg_df.index.get_level_values("Hour").astype(str) + ":00:00")
+
+    assert hourly_avg_df[hourly_avg_df.index.hour == 0]["data"] == 5
+    assert hourly_avg_df[hourly_avg_df.index.hour == 1]["data"] == 6
+    assert hourly_avg_df[hourly_avg_df.index.hour == 2]["data"] == 16/3
+
 
 # --------------------------------

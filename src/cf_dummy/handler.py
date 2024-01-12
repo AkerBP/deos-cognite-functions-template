@@ -44,6 +44,7 @@ if __name__ == '__main__':
     # JUST FOR TESTING
     from initialize import initialize_client
     from dotenv import load_dotenv
+    from deploy_cognite_functions import deploy_cognite_functions
     import os
 
     cdf_env = "dev"
@@ -52,37 +53,50 @@ if __name__ == '__main__':
     load_dotenv("../../handler-data.env")
 
     # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
-    ts_input_names = ["VAL_11-PT-92363B:X.Value"]
+    ts_input_names = ["VAL_18-LIT-80391:VALUE"]
     # ts_output_names = ["VAL_17-FI-9101-286:CDF.IdealPowerConsumption"]
-    ts_output_names = ["TemplateVsCharts_Template"]
-    function_name = "templatevscharts-template" #
-    calculation_function = "exp" #
+    ts_output_names = ["VAL_18-LIT-80391:X.CDF.D.AVG.LeakValue.TEST"]
+
+    function_name = "avg-drainage"
+    calculation_function = "aggregate"
+    schedule_name = ts_input_names[0]
+
+    aggregate = {}
+    aggregate["period"] = "day"
+    aggregate["type"] = "mean"
 
     sampling_rate = 60 #
     cron_interval_min = str(15) #
     assert int(cron_interval_min) < 60 and int(cron_interval_min) >= 1
     backfill_days = 3
+    backfill_hour = 10
+    backfill_min_start = 30
 
     cdf_env = "dev"
 
-    tank_volume = 1400
+    tank_volume = 515
     derivative_value_excl = 0.002
     lowess_frac = 0.001
     lowess_delta = 0.01
 
-    data_dict = {'ts_input_names':ts_input_names, # empty dictionary for each time series input
+    data_dict = {'ts_input_names':ts_input_names,
             'ts_output_names':ts_output_names,
             'function_name': f"cf_{function_name}",
+            'schedule_name': schedule_name,
             'calculation_function': f"main_{calculation_function}",
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
+            'cron_interval_min': cron_interval_min,
+            'aggregate': aggregate,
+            'testing': False,
             'backfill_days': backfill_days,
-            'backfill_hour': 10, # backfilling to be scheduled at last hour of day as default
-            'backfill_min_start': 10, 'backfill_min_end': 10 + int(cron_interval_min),
+            'backfill_hour': backfill_hour, # 23: backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': backfill_min_start, 'backfill_min_end': min(59.9, backfill_min_start + int(cron_interval_min)),
             'calc_params': {
                 'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
-                'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta
+                'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta, 'aggregate_period': aggregate["period"]
             }}
 
     # client.time_series.delete(external_id=str(os.getenv("TS_OUTPUT_NAME")))
     new_df = handle(client, data_dict)
+    # deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)

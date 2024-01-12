@@ -60,9 +60,9 @@ if __name__ == '__main__':
     load_dotenv("../../handler-data.env")
 
     # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"]
-    ts_input_names = ["VAL_11-LT-95107A:X.Value"]
+    ts_input_names = ["VAL_18-LIT-80391:VALUE"]
     # ts_output_names = ["VAL_17-FI-9101-286:CDF.IdealPowerConsumption"]
-    ts_output_names = ["VAL_11-LT-95107A:X.CDF.D.AVG.LeakValue"]
+    ts_output_names = ["VAL_18-LIT-80391:X.CDF.D.AVG.LeakValue.TEST"]
 
     function_name = "daily-avg-drainage"
     calculation_function = "daily_avg_drainage"

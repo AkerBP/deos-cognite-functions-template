@@ -147,7 +147,7 @@ def deploy_schedule(prepare_ts):
     ts_orig = prepare_ts.client.time_series.list(name=ts_orig_input_name).to_pandas()
     ts_extid = ts_orig.external_id[0]
     # Insert datapoints into copied input time series
-    end_time = pd.Timestamp.now()
+    end_time = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     start_time = end_time - timedelta(days=5)
     input_data = prepare_ts.client.time_series.data.retrieve(external_id=ts_extid,
                                                              start=pd.to_datetime(start_time),
@@ -170,10 +170,10 @@ def deploy_schedule(prepare_ts):
     deploy_cognite_functions(prepare_ts.data, prepare_ts.client,
                             True, False)
     # Let backfill period be current timestamp - return argument to be compared to
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     while int(str(now.minute)[-1]) < 9 or now.second < 50: # create schedule at 9th minute, first call then at 0th minute for next 10-min period
         time.sleep(1)
-        now = pd.Timestamp.now()
+        now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     prepare_ts.data["backfill_hour"] = now.hour
     prepare_ts.data["backfill_min_start"] = 0#now.minute
     prepare_ts.data["backfill_min_end"] = 1#now.minute + 1
@@ -206,7 +206,7 @@ def deploy_schedule(prepare_ts):
     output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
     previous_df = output_df.rename(columns={0: ts_input_name})
 
-    end_date = pd.Timestamp.now()
+    end_date = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     start_date = end_date - timedelta(days=prepare_ts.data["backfill_days"])
     schedule_data["start_time"] = start_date
     schedule_data["end_time"] = end_date
@@ -367,7 +367,7 @@ def test_align_time_series(cognite_client_mock, prepare_ts):
 
     prepare_ts.create_timeseries()
 
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     # Ensure we dont perform any backfilling at this point in time
     prepare_ts.data["backfill_hour"] = (now - timedelta(hours=1)).hour
 
@@ -394,6 +394,59 @@ def test_align_time_series(cognite_client_mock, prepare_ts):
     # Assert all return elements are DataFrames
     assert all([isinstance(df, pd.DataFrame) for df in ts_df_true])
 
+def test_get_aggregated_start_time(prepare_ts):
+    prepare_ts.data["start_time"] = datetime(2023,11,20,8,20,30)
+    prepare_ts.data["aggregate"] = {}
+
+    prepare_ts.data["aggregate"]["period"] = "second"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,20,30)
+
+    prepare_ts.data["aggregate"]["period"] = "minute"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,20,0)
+
+    prepare_ts.data["aggregate"]["period"] = "hour"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,0,0)
+
+    prepare_ts.data["aggregate"]["period"] = "day"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,0,0,0)
+
+    prepare_ts.data["aggregate"]["period"] = "month"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,0,0,0,0)
+
+    prepare_ts.data["aggregate"]["period"] = "year"
+    assert prepare_ts.get_aggregated_start_time() == datetime(2023,0,0,0,0,0)
+
+def test_join_previous_and_current(prepare_ts):
+    """Test that joining data from current schedule with data from aggregating
+    period NOT overlapping with current schedule returns correct data and
+    non-overlapping dates.
+
+    Args:
+        prepare_ts (class): instance of PrepareTimeseries
+    """
+    datetime_previous = pd.date_range(start=datetime(2023,4,5,0),
+                                      end=datetime(2023,4,5,17),
+                                      freq="1H")
+    data_previous = [4,1,8,5,2,8,6,0,-5,-3,6,5,9,6,9,2,4,10]
+    df_previous = pd.DataFrame(data_previous, index=datetime_previous, columns=["data"])
+    df_previous = df_previous.iloc[:-1] # to avoid duplicate of datapoint at overlapping timestamp between dataframes
+
+    datetime_current = pd.date_range(start=datetime(2023,4,5,17),
+                                     end=datetime(2023,4,6,5),
+                                     freq="1H")
+    data_current = [10,0,6,-4,-1,7,1,5,1,1,12,-1,2]
+    df_current = pd.DataFrame(data_current, index=datetime_current, columns=["data"])
+
+    df = pd.concat([df_previous, df_current]) # join scheduled period with remaining aggregated period
+    # df = df.apply(lambda row: getattr(row, prepare_ts.data["aggregate"]["type"])(), axis=1)
+
+    assert len(df) == 30
+    assert df["data"] == data_previous + data_current
+    assert len(df.index) == len(set(df.index))
+
+
+
+### --- FOLLOWING TESTS CURRENTLY NOT WORKING - REQUIRES DEPLOYED SCHEDULE FROM MOCK CLIENT ---
 
 def test_deploy_schedule(prepare_ts, deploy_schedule):
     """Test utility function used for testing backfilling
@@ -487,7 +540,7 @@ def test_backfilling_insert(prepare_ts):
 
     df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
     # Insert data into copied input
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     new_data = [
         (datetime(now.year, now.month, now.day, now.hour-2, now.minute), 111),
         (datetime(now.year, now.month, now.day, now.hour-1, now.minute), 333)
@@ -530,7 +583,7 @@ def test_backfilling_delete(prepare_ts):
 
     df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
     # Delete data from copied input
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     start_delete = datetime(now.year, now.month, now.day, now.hour-2, now.minute)
     end_delete = datetime(now.year, now.month, now.day, now.hour, now.minute)
 

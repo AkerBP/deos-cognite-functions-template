@@ -87,10 +87,10 @@ def test_transform_multiple_ts(prepare_ts, run_transform):
     prepare_ts.data["calculation_function"] = "calc_multiple_outputs"
     calculation = prepare_ts.data["calculation_function"]
 
-    now = pd.Timestamp.now()
+    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     while now.minute >= 59:
         time.sleep(1)
-        now = pd.Timestamp.now()
+        now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     prepare_ts.data["backfill_hour"] = now.hour
     prepare_ts.data["backfill_min_start"] = now.minute
     prepare_ts.data["backfill_min_end"] = now.minute + 1
@@ -102,9 +102,8 @@ def test_transform_multiple_ts(prepare_ts, run_transform):
         assert not ts_out.empty
 
     ts_out = run_transform(eval(calculation))
-    assert isinstance(ts_out, list)
-    for ts in ts_out:
-        assert isinstance(ts, pd.Series)
+    assert isinstance(ts_out, pd.DataFrame)
+    assert len(ts_out.columns) == 4
 
     out_df = run_transform.store_output_df(ts_out)
     assert isinstance(out_df, pd.DataFrame)
