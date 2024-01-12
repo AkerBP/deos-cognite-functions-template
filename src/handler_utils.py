@@ -1,6 +1,7 @@
 import sys
 import os
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -80,7 +81,7 @@ class PrepareTimeSeries:
         ts_outputs = self.data["ts_output"]
 
         # TODO TODO TODO TODO ----------------------
-        end_date = pd.Timestamp.now()# - timedelta(days=1) #TODO: SUBTRACTING ONE DAY ONLY FOR TESTING !
+        end_date = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC") #- timedelta(days=2) #TODO: SUBTRACTING ONE DAY ONLY FOR TESTING !
         # TODO TODO TODO TODO ----------------------
 
         start_date = end_date - timedelta(minutes=int(self.data["cron_interval_min"]))
@@ -128,83 +129,65 @@ class PrepareTimeSeries:
             ts_input_backfill = json.dumps(None)
 
             # STEP 3: Identify backfill candidates
-            backfill_dates = []
-            # TODO: Change to 23 hours and 45 minutes.
-            # NB: When running on schedule, now() is 2 hours BEFORE specified hour!
+            backfill_periods = []
+
             if self.data["testing"]:
                 if int(str(end_date.minute)[-1]) == 0:
-                    ts_input_backfill, backfill_dates = self.check_backfilling(ts_in, testing=True)
+                    ts_input_backfill, backfill_periods = self.check_backfilling(ts_in, testing=True)
             elif end_date.hour == self.data["backfill_hour"] and \
                 end_date.minute >= self.data["backfill_min_start"] and \
                 end_date.minute < self.data["backfill_min_end"] \
-                and data_out["exists"]:
-                    ts_input_backfill, backfill_dates = self.check_backfilling(ts_in)
+                and data_out["exists"]: # TODO: Change to 23 hours and 45 minutes.
+                    ts_input_backfill, backfill_periods = self.check_backfilling(ts_in)
 
             self.data["ts_input_backfill"][ts_in] = ts_input_backfill
-            # STEP 4: Perform backfilling on dates with discrepancies in datapoints
-            if "period" in self.data["aggregate"] and "type" in self.data["aggregate"] \
-                and len(backfill_dates) > 0:
-                # If aggregates, run backfilling for last X aggregated periods
-                min_backfill_date = min(backfill_dates)
-                start_year = min_backfill_date.year
-                start_month = 0
-                start_day = 0
-                start_hour = 0
-                start_minute = 0
-                if self.data["aggregate"]["period"] == "year":
-                    pass
-                elif self.data["aggregate"]["period"] == "month":
-                    start_month = min_backfill_date.month
-                elif self.data["aggregate"]["period"] == "day":
-                    start_month = min_backfill_date.month
-                    start_day = min_backfill_date.day
-                elif self.data["aggregate"]["period"] == "hour":
-                    start_month = min_backfill_date.month
-                    start_day = min_backfill_date.day
-                    start_hour = min_backfill_date.hour
-                elif self.data["aggregate"]["period"] == "minute":
-                    start_month = min_backfill_date.month
-                    start_day = min_backfill_date.day
-                    start_hour = min_backfill_date.hour
-                    start_minute = min_backfill_date.minute
-                else:
-                    raise NotImplementedError(f"Backfilling not implemented for aggregates of period {self.data['aggregate']['period']}. Supported periods are: year, month, day, hour, minute.")
 
-                self.data["start_time"] = datetime(start_year, start_month, start_day, start_hour, start_minute)
+            # STEP 4: Perform backfilling on dates with discrepancies in datapoints
+            for period in backfill_periods:
+                if "period" in self.data["aggregate"] and "type" in self.data["aggregate"]:
+                    # If aggregates, for each "changed" period, run backfilling over a single aggregation period
+                    start_time, end_time = self.get_aggregated_start_end_time(period)
+
+                    self.data["start_time"] = start_time
+                    self.data["end_time"] = end_time
+
+                else:
+                    self.data["start_time"] = pd.to_datetime(period) # period assumed to be a date
+                    self.data["end_time"] = pd.to_datetime(period+timedelta(days=1))
+
+                self.run_backfilling(ts_inputs, ts_output_names, calc_func)
+
+            """if "period" in self.data["aggregate"] and "type" in self.data["aggregate"] \
+                and len(backfill_periods) > 0:
+                # If aggregates, run backfilling for last X aggregated periods
+                start_time, end_time = self.get_aggregated_start_end_time(backfill_periods)
+
+                self.data["start_time"] = start_time
+                self.data["end_time"] = end_time
+
+                self.run_backfilling(ts_inputs, ts_output_names, calc_func)
 
             else: # If no aggregates, run backfilling on each date separately
-                for date in backfill_dates:
+                for date in backfill_periods:
                     self.data["start_time"] = pd.to_datetime(date)
                     self.data["end_time"] = pd.to_datetime(date+timedelta(days=1))
 
-                    for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
-                        if not ts_inputs[ts_in]["exists"]:
-                            self.data["ts_input_data"][ts_in] = float(ts_in)
-                            continue
-
-                        df_orig = self.retrieve_orig_ts(ts_in, ts_out)
-                        self.data["ts_input_data"][ts_in] = df_orig[ts_in]
-
-                    ts_df = self.get_ts_df()
-                    ts_df = self.align_time_series(ts_df)
-
-                    transform_timeseries = RunTransformations(self.data, ts_df)
-                    ts_out = transform_timeseries(calc_func)
-                    df_out = transform_timeseries.store_output_ts(ts_out)
-
-                    client.time_series.data.insert_dataframe(df_out)
-
-        # STEP 5: After backfilling, retrieve original signal for intended transformation period
-        for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+                    self.run_backfilling(ts_inputs, ts_output_names, calc_func)
+            """
+            # STEP 5: After backfilling, retrieve original signal for intended transformation period
             if not ts_inputs[ts_in]["exists"]:
                 self.data["ts_input_data"][ts_in] = float(ts_in)
                 continue # input not from CDF, skip to next input
+
+            # Start and end times may have been modified by backfilling. Retrieve original times.
+            self.data["start_time"] = start_date
+            self.data["end_time"] = end_date
 
             df_orig = self.retrieve_orig_ts(ts_in, ts_out)
 
             if "period" in self.data["aggregate"] and "type" in self.data["aggregate"]:
                 start_time_schedule = self.data["start_time"]
-                start_time_aggregate = self.get_aggregated_start_time()
+                start_time_aggregate, _ = self.get_aggregated_start_end_time() # only need start time, not end time
 
                 orig_extid = self.data["ts_input"][ts_in]["orig_extid"]
                 # Retrieve all datapoints from aggregated period NOT part of current schedule
@@ -219,13 +202,14 @@ class PrepareTimeSeries:
                 df_orig_prev.index = pd.to_datetime(df_orig_prev.index)
                 df_orig.index = pd.to_datetime(df_orig.index)
 
-                # df_orig = df_orig.join(df_orig_prev)
                 df_orig = pd.concat([df_orig_prev, df_orig]) # join scheduled period with remaining aggregated period
-                df_orig = df_orig.apply(lambda row: getattr(row, self.data["aggregate"]["type"])(), axis=1)
+                # df_orig = df_orig.apply(lambda row: getattr(row, self.data["aggregate"]["type"])(), axis=1)
 
                 df_orig = pd.DataFrame(df_orig, columns=[ts_in])
 
             self.data["ts_input_data"][ts_in] = df_orig[ts_in]
+            if self.data["ts_input_backfill"][ts_in] == "null": # if no backfilling for input signal, return original signal
+                self.data["ts_input_backfill"][ts_in] = ast.literal_eval(df_orig[ts_in].to_json())
 
         self.data["ts_input_backfill"] = json.dumps(self.data["ts_input_backfill"])
         return self.data
@@ -387,50 +371,6 @@ class PrepareTimeSeries:
         ts_data = [ts_data[name] if isinstance(ts_data[name], float) else pd.DataFrame(ts_data[name]) for name in ts_data]
         return ts_data
 
-    def get_aggregated_start_time(self) -> datetime:
-        """For aggregated calculations, return start time of current aggregated period.
-
-        Raises:
-            NotImplementedError: Aggregation not supported for periods other than "second", "minute", "hour", "day", "month" or "year".
-
-        Returns:
-            (datetime): start time of aggregated period
-        """
-        end_time_previous = self.data["start_time"] # end time of previous scheduled call
-
-        if self.data["aggregate"]["period"] == "second":
-            start_time_previous = datetime(end_time_previous.year,
-                                            end_time_previous.month,
-                                            end_time_previous.day,
-                                            end_time_previous.hour,
-                                            end_time_previous.minute,
-                                            end_time_previous.second)
-        elif self.data["aggregate"]["period"] == "minute":
-            start_time_previous = datetime(end_time_previous.year,
-                                            end_time_previous.month,
-                                            end_time_previous.day,
-                                            end_time_previous.hour,
-                                            end_time_previous.minute)
-            # start_time_previous = end_time_previous - PrepTS.data["cron_interval_min"]
-        elif self.data["aggregate"]["period"] == "hour":
-            start_time_previous = datetime(end_time_previous.year,
-                                            end_time_previous.month,
-                                            end_time_previous.day,
-                                            end_time_previous.hour)
-        elif self.data["aggregate"]["period"] == "day":
-            start_time_previous = datetime(end_time_previous.year,
-                                            end_time_previous.month,
-                                            end_time_previous.day)
-        elif self.data["aggregate"]["period"] == "month":
-            start_time_previous = datetime(end_time_previous.year,
-                                            end_time_previous.month)
-        elif self.data["aggregate"]["period"] == "year":
-            start_time_previous = datetime(end_time_previous.year)
-        else:
-            raise NotImplementedError(f"Cognite Functions Template does not support calculations for aggregation period '{self.data['aggregate']['period']}'")
-
-        return start_time_previous
-
     def check_backfilling(self, ts_input_name: str, testing: bool = False) -> Tuple[dict, list]:
         """Runs a backfilling for last self.data["backfill_period"] days of input time series.
 
@@ -447,15 +387,12 @@ class PrepareTimeSeries:
         ts_input = data["ts_input"][ts_input_name]
         orig_extid = ts_input["orig_extid"]
 
-        # ----------------
-        #now = pd.Timestamp.now() #datetime(2023, 11, 14, 16, 30)  # provided in local time
-        # ----------------
-
         end_date = data["end_time"]
 
-        start_date, _ = self.backfill_period_start(end_date, data, False)
+        # Get start of period to backfill for
+        start_date, _ = self.backfill_period_start(end_date, False)
 
-        backfill_dates = []
+        backfill_periods = []
 
         # Search through prev X=data["backfill_period"] time period of original time series for backfilling
         ts_orig_all = client.time_series.data.retrieve(external_id=orig_extid,
@@ -473,7 +410,8 @@ class PrepareTimeSeries:
         my_func = client.functions.retrieve(external_id=data["function_name"])
         scheduled_calls = data["scheduled_calls"]
 
-        backfill_date, backfill_hour = self.backfill_period_start(end_date, data, False)
+        # Get date and hour of when most recent backfilling occured
+        backfill_date, backfill_hour = self.backfill_period_start(end_date, True)
 
         backfill_day = backfill_date.day
         backfill_month = backfill_date.month
@@ -496,7 +434,7 @@ class PrepareTimeSeries:
             print(
                 f"Input {ts_input_name}: No schedule from yesterday. Can't backfill. Returning original signal from last {data['backfill_period']} days.")
             orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
-            return orig_as_dict, backfill_dates
+            return orig_as_dict, backfill_periods
 
         last_backfill_call = my_func.retrieve_call(id=last_backfill_id)
         print(
@@ -508,72 +446,161 @@ class PrepareTimeSeries:
         output_df = pd.DataFrame.from_dict([output_dict]).T
         output_df.index = pd.to_datetime(
             output_df.index.astype(np.int64), unit="ms")
-        output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
+        # output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
 
-        # YESTERDAY's signal spanning backfilling period
-        yesterday_df = output_df.rename(columns={0: ts_input_name})
-        # TODAY's signal spanning backfilling period
-        ts_orig_dates = pd.DataFrame(
-            {"Date": pd.to_datetime(ts_orig_all.index.date),
-            ts_input_name: ts_orig_all[ts_input_name]},
-            index=pd.to_datetime(ts_orig_all.index))
+        agg_period = {"second":"S", "minute":"T", "hour":"H", "day":"D", "month":"M", "year":"Y"}
+        aggregate = data["aggregate"]
+        if "period" in aggregate:
+            sampling_period = agg_period[aggregate["period"]]
+        else:
+            sampling_period = "D" # if no aggregates, we run backfilling for dates by default
 
-        if not yesterday_df.empty:  # empty if no scheduled call from yesterday
-            print("Dates from yesterday's signal: ", yesterday_df.index.values)
-            print("Dates from today's signal: ", ts_orig_dates.index.values)
-            # 1. Only include overlapping parts of signal from today and yesterday
-            backfill_date_start = ts_orig_dates.index[0]
-            backfill_date_stop = yesterday_df.index[-1]
-            yesterday_df = yesterday_df[yesterday_df.index >= backfill_date_start]
-            ts_orig_dates = ts_orig_dates[ts_orig_dates.index <= backfill_date_stop]
+        # PREVIOUS period's signal spanning backfilling period
+        previous_df = output_df.rename(columns={0: ts_input_name})
+        # CURRENT period's signal spanning backfilling period
+        ts_orig_current = ts_orig_all.copy()
 
-            # 2. Store number of data points in ORIGINAL signal for each date, for yesterday and today
-            num_dates_old = yesterday_df.groupby(yesterday_df["Date"]).count()
-            num_dates_old.index = pd.to_datetime(num_dates_old.index)
-            num_dates_old = num_dates_old.rename(columns={ts_input_name: "Datapoints"})
+        if not previous_df.empty:  # empty if no scheduled call from previous period
+            print("Dates from previous signal: ", previous_df.index.values)
+            print("Dates from current signal: ", ts_orig_current.index.values)
+            # 1. Only include overlapping parts of signal from current and previous periods
+            backfill_date_start = ts_orig_current.index[0]
+            backfill_date_stop = previous_df.index[-1]
+            previous_df = previous_df[previous_df.index >= backfill_date_start]
+            ts_orig_current = ts_orig_current[ts_orig_current.index <= backfill_date_stop]
 
-            num_dates_new = ts_orig_dates.groupby(ts_orig_dates["Date"]).count()
-            num_dates_new = num_dates_new.rename(columns={ts_input_name: "Datapoints"})
+            # 2. Store number of data points in ORIGINAL signal for each aggregated period, for both previous period (num_periods_previous) and current period (num_periods_current)
+            num_periods_previous = previous_df.resample(sampling_period).count()
+            # num_periods_previous = previous_df.groupby(previous_df["Date"]).count()
+            num_periods_previous.index = pd.to_datetime(num_periods_previous.index)
+            num_periods_previous = num_periods_previous.rename(columns={ts_input_name: "Datapoints"})
 
-            missing_dates = num_dates_new[~num_dates_new.index.isin(
-                num_dates_old.index)].index
-            missing_dates = pd.DataFrame({"Datapoints":
-                                        np.zeros(len(missing_dates), dtype=np.int32)}, index=missing_dates)
+            num_periods_current = ts_orig_current.resample(sampling_period).count()
+            # num_periods_current = ts_orig_current.groupby(ts_orig_current["Date"]).count()
+            num_periods_current = num_periods_current.rename(columns={ts_input_name: "Datapoints"})
 
-            # New df with zero count for missing dates
-            num_dates_old = pd.concat([num_dates_old, missing_dates]).sort_index()
+            missing_periods = num_periods_current[~num_periods_current.index.isin(
+                num_periods_previous.index)].index
+            missing_periods = pd.DataFrame({"Datapoints":
+                                        np.zeros(len(missing_periods), dtype=np.int32)}, index=missing_periods)
 
-            # 3. Only backfill if num datapoints have INCREASED or DECREASED for any dates
-            increased_dates = num_dates_new[num_dates_new["Datapoints"] >
-                                            num_dates_old["Datapoints"]].index
-            print(f"Backfilling dates with NEW data: {increased_dates.values}")
+            # New df with zero count for missing periods
+            num_periods_previous = pd.concat([num_periods_previous, missing_periods]).sort_index()
 
-            decreased_dates = num_dates_new[num_dates_new["Datapoints"] <
-                                            num_dates_old["Datapoints"]].index
-            print(f"Backfilling dates with DELETED data: {decreased_dates.values}")
-            backfill_dates = increased_dates.union(decreased_dates, sort=True)
+            # 3. Only backfill if num datapoints have INCREASED or DECREASED for any periods
+            increased_periods = num_periods_current[num_periods_current["Datapoints"] >
+                                            num_periods_previous["Datapoints"]].index
+            print(f"Backfilling periods with NEW data: {increased_periods.values}")
 
-        # if testing:
-        #     return ts_orig_all, yesterday_df, backfill_dates, \
-        #             num_dates_old, num_dates_new
-        # return recent original signal
+            decreased_periods = num_periods_current[num_periods_current["Datapoints"] <
+                                            num_periods_previous["Datapoints"]].index
+            print(f"Backfilling periods with DELETED data: {decreased_periods.values}")
+            backfill_periods = increased_periods.union(decreased_periods, sort=True)
+
         orig_as_dict = ast.literal_eval(ts_orig_all[ts_input_name].to_json())
-        return orig_as_dict, backfill_dates
+
+        return orig_as_dict, backfill_periods
+
+    def run_backfilling(self, ts_inputs, ts_output_names, calc_func):
+        for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
+            if not ts_inputs[ts_in]["exists"]:
+                self.data["ts_input_data"][ts_in] = float(ts_in)
+                continue
+
+            df_orig = self.retrieve_orig_ts(ts_in, ts_out)
+            self.data["ts_input_data"][ts_in] = df_orig[ts_in]
+
+        ts_df = self.get_ts_df()
+        ts_df = self.align_time_series(ts_df)
+
+        transform_timeseries = RunTransformations(self.data, ts_df)
+        ts_out = transform_timeseries(calc_func)
+        df_out = transform_timeseries.store_output_ts(ts_out)
+
+        self.client.time_series.data.insert_dataframe(df_out)
+        return
+
+    def get_aggregated_start_end_time(self, start_backfill_time=None) -> Tuple[datetime, datetime]:
+        """Return start and end time of aggregated period.
+        In case of backfilling, the end time is one delta period
+        ahead of last backfilled aggregated period.
+
+        Args:
+            start_backfill_time (datetime64, optional): Datetime period to start backfilling from. Defaults to None.
+
+        Raises:
+            NotImplementedError: In case of invalid aggregation period.
+
+        Returns:
+            Tuple[datetime, datetime]: Start time and end time of aggregation period.
+        """
+        if start_backfill_time is not None:
+            agg_period = {self.data["aggregate"]["period"]+"s": 1}
+
+            """start_backfill_time = min(start_backfill_period)
+            agg_delta = relativedelta(**agg_period) # delta of aggregation period
+            end_backfill_time = max(backfill_period)+agg_delta # add aggregation period delta to include last backfilling period
+            """
+            agg_delta = relativedelta(**agg_period)
+            end_backfill_time = start_backfill_time + agg_delta
+
+        else:
+            start_backfill_time = self.data["start_time"]
+            end_backfill_time = self.data["end_time"]
+
+        start_time = datetime(start_backfill_time.year, 1, 1)
+        end_time = datetime(end_backfill_time.year, 1, 1)
+
+        if self.data["aggregate"]["period"] == "year":
+            pass
+        elif self.data["aggregate"]["period"] == "month":
+            start_time = start_time.replace(month=start_backfill_time.month)
+            end_time = end_time.replace(month=end_backfill_time.month)
+        elif self.data["aggregate"]["period"] == "day":
+            start_time = start_time.replace(month=start_backfill_time.month,
+                                            day=start_backfill_time.day)
+            end_time = end_time.replace(month=end_backfill_time.month,
+                                        day=end_backfill_time.day)
+        elif self.data["aggregate"]["period"] == "hour":
+            start_time = start_time.replace(month=start_backfill_time.month,
+                                            day=start_backfill_time.day,
+                                            hour=start_backfill_time.hour)
+            end_time = end_time.replace(month=end_backfill_time.month,
+                                        day=end_backfill_time.day,
+                                        hour=end_backfill_time.hour)
+        elif self.data["aggregate"]["period"] == "minute":
+            start_time = start_time.replace(month=start_backfill_time.month,
+                                            day=start_backfill_time.day,
+                                            hour=start_backfill_time.hour,
+                                            minute=start_backfill_time.minute)
+            end_time = end_time.replace(month=end_backfill_time.month,
+                                        day=end_backfill_time.day,
+                                        hour=end_backfill_time.hour,
+                                        minute=end_backfill_time.minute)
+
+        else:
+            raise NotImplementedError(f"Backfilling not implemented for aggregates of period {self.data['aggregate']['period']}. Supported periods are: year, month, day, hour, minute.")
+
+        start_time = start_time.replace(tzinfo=self.data["start_time"].tzinfo)
+        end_time = end_time.replace(tzinfo=self.data["end_time"].tzinfo)
+
+        end_time = min(end_time, self.data["end_time"]) # cap end time at current timestamp
+
+        return start_time, end_time
 
 
-    def backfill_period_start(self, end_date, data, get_previous_schedule=False):
+    def backfill_period_start(self, end_date, get_previous_schedule=False):
         """Utility function for getting start of backfilling period,
         taking into account aggregates (if relevant).
 
         Args:
             end_date (datetime): date to run backfilling up to (typically pd.Timestamp.now)
-            data (dict): input parameters for deployment of cognite function
             get_previous_schedule (bool): true if we want to retrieve previous schedule running backfilling
         Returns:
             backfill_date (datetime): date marking start of backfilling
             backfill_hour (int): hour of day at which to run backfilling
         """
-        from dateutil.relativedelta import relativedelta
+        data = self.data
 
         backfill_hour = data["backfill_hour"]#backfill_date.hour
 
@@ -587,14 +614,11 @@ class PrepareTimeSeries:
 
         elif "period" in data["aggregate"] and "type" in data["aggregate"]:
             # perform backfilling for each aggregated period
-            if data["aggregate"]["period"] == "year":
-                backfill_date = (end_date - relativedelta(year=backfill_period))
-            elif data["aggregate"]["period"] == "month":
-                backfill_date = (end_date - relativedelta(month=backfill_period))
-            elif data["aggregate"]["period"] == "day":
-                backfill_date = (end_date - timedelta(days=backfill_period))
-            elif data["aggregate"]["period"] == "hour":
-                backfill_date = (end_date - timedelta(hours=backfill_period))
+            period = {data["aggregate"]["period"]+"s": backfill_period} # because relativedelta parameters end with s (e.g., hours not hour)
+
+            backfill_date = (end_date - relativedelta(**period))
+
+            if data["aggregate"]["period"] == "hour":
                 backfill_hour = backfill_date.hour
 
         else:

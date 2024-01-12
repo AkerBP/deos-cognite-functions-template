@@ -31,8 +31,8 @@ class RunTransformations:
         Returns:
             (pd.DataFrame): transformed data, one column per time series
         """
-        ts_out = calc_func(self.data["calc_params"], self.ts_df)
-        print(f"Output: {ts_out.shape[1]} time series with {ts_out.shape[0]} datapoints (each).")
+        ts_out = calc_func(self.data, self.ts_df)
+        print(f"Output: {ts_out.shape[1]} time series, each with {ts_out.shape[0]} datapoints.")
 
         return ts_out
 

@@ -29,7 +29,7 @@ def handle(client: CogniteClient, data: dict) -> str:
     PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
     PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
-    ts_in = PrepTS.data["ts_input_today"]
+    ts_in = PrepTS.data["ts_input_data"]
     all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
 
     if not all_inputs_empty: # can't run calculations if any time series is empty for defined interval
@@ -40,28 +40,69 @@ def handle(client: CogniteClient, data: dict) -> str:
         transform_timeseries = RunTransformations(PrepTS.data, df_in)
         df_out = transform_timeseries(eval(calculation))
 
-        # STEP 2.5: Assemble aggregations (if relevant) - think it will work for schedules that overlap aggregation periods
-        df_out_prev_exists = not client.time_series.data.retrieve_dataframe(external_id=list(PrepTS.data["ts_output"].keys())).empty
-
-        if "period" in PrepTS.data["aggregate"] and "type" in PrepTS.data["aggregate"] and df_out_prev_exists:
-
-            end_time_previous = PrepTS.data["start_time"]
-            start_time_previous = PrepTS.get_aggregated_start_time()
-
-            df_out_prev = client.time_series.data.retrieve_dataframe(external_id=list(PrepTS.data["ts_output"].keys()),
-                                                                    start=start_time_previous,
-                                                                    end=end_time_previous)
-            df_out_prev.index = pd.to_datetime(df_out_prev.index)
-            df_out.index = pd.to_datetime(df_out.index)
-
-            df_out = df_out.join(df_out_prev)
-            df_out = df_out.apply(lambda row: getattr(row, PrepTS.data["aggregate"]["type"])(), axis=1)
-
-            df_out = pd.DataFrame(df_out, columns=PrepTS.data["ts_input_names"])
-
         # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
         df_out = transform_timeseries.store_output_ts(df_out)
         client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
     return PrepTS.data["ts_input_backfill"]
+
+if __name__ == '__main__':
+    # JUST FOR TESTING
+    from initialize import initialize_client
+    from dotenv import load_dotenv
+    from deploy_cognite_functions import deploy_cognite_functions
+    import os
+
+    cdf_env = "dev"
+
+    client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
+    load_dotenv("../../handler-data.env")
+
+    ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"] # Inputs to IdealPowerConsumption function # ["VAL_11-XT-95067B:Z.X.Value", 87.8, "CF_IdealPowerConsumption"] # Inputs to WasterEnergy function
+    #ts_input_names = ["VAL_18-LIT-80243:VALUE"]#["VAL_18-LIT-80191:VALUE"]
+    ts_output_names = ["CF_IdealPowerConsumption_NEW"]
+    # ts_output_names = ["VAL_18-LIT-80243.CDF.D.AVG.LeakValue"]
+
+    function_name = "ideal-power-consumption" #"avg-drainage"
+    calculation_function = "ideal_power_consumption" #"aggregate"
+    schedule_name = ts_input_names[0]
+
+    aggregate = {}
+    # aggregate["period"] = "day"
+    # aggregate["type"] = "mean"
+
+    sampling_rate = 60 #
+    cron_interval_min = str(15) #
+    assert int(cron_interval_min) < 60 and int(cron_interval_min) >= 1
+    backfill_period = 3
+    backfill_hour = 15 # 23
+    backfill_min_start = 30
+
+    tank_volume = 515
+    derivative_value_excl = 0.002
+    lowess_frac = 0.001
+    lowess_delta = 0.01
+
+    data_dict = {'ts_input_names':ts_input_names,
+            'ts_output_names':ts_output_names,
+            'function_name': f"cf_{function_name}",
+            'schedule_name': schedule_name,
+            'calculation_function': f"main_{calculation_function}",
+            'granularity': sampling_rate,
+            'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
+            'cron_interval_min': cron_interval_min,
+            'aggregate': aggregate,
+            'testing': False,
+            'backfill_period': backfill_period,
+            'backfill_hour': backfill_hour, # 23: backfilling to be scheduled at last hour of day as default
+            'backfill_min_start': backfill_min_start, 'backfill_min_end': min(59.9, backfill_min_start + int(cron_interval_min)),
+            'calc_params': {
+                'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
+                'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta,
+            }}
+
+    # client.time_series.delete(external_id="CF_IdealPowerConsumption_NEW")
+    new_df = handle(client, data_dict)
+    # deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)
+

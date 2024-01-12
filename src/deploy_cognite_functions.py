@@ -2,6 +2,7 @@ import zipfile
 import os
 import pandas as pd
 from typing import Tuple
+import time
 
 from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
@@ -24,7 +25,6 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
     cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
 
     if cognite_function is None: # function not exist, create ...
-        import time
         folder = os.getcwd().replace("\\", "/")
         folder_cf = folder + "/" + data_dict["function_name"]
 
@@ -77,8 +77,14 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
 
     # AFTER initial call, function can be scheduled
     if scheduled_call:
-        now = pd.Timestamp.now()
         cron_interval = data_dict["cron_interval_min"]
+
+        now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
+        if data_dict["granularity"] >= 60:
+            print("Preparing schedule to start sharp at next minute ...")
+            while now.second > 0: # Align schedule to start at minute sharp, for sampling rate >= 1 min
+                time.sleep(1)
+                now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
 
         print(f"Setting up Cognite Function schedule at time {now} ...")
         client.functions.schedules.create(

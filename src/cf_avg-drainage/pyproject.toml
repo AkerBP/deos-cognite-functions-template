@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cf-ideal-power-consumption"
+name = "cf-avg-drainage"
 version = "0.1.0"
 description = ""
 authors = ["vetlenev <vetle.nevland@akerbp.com>"]
@@ -7,12 +7,13 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+ipykernel = "^6.28.0"
 pytest = "^7.4.4"
+numpy = "^1.26.3"
+cognite-sdk = "^7.10.0"
 pandas = "^2.1.4"
 python-dotenv = "^1.0.0"
-ipykernel = "^6.28.0"
-cognite-sdk = "^7.13.0"
-numpy = "^1.26.3"
+statsmodels = "^0.14.1"
 
 
 [build-system]
