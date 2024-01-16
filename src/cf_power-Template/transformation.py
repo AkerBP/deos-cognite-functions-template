@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from indsl.ts_utils.operators import power
 
 def main_power(data, ts_inputs):

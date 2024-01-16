@@ -1,11 +1,11 @@
 
  
+ipykernel 
 pytest 
-pandas 
 numpy 
 cognite-sdk 
+pandas 
 python-dotenv 
-ipykernel 
 statsmodels 
 
 

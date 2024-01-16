@@ -28,19 +28,19 @@ class PrepareTimeSeries:
     """Class to organize input time series and prepare output time series
     for transformations with Cognite Functions.
     """
-    def __init__(self, ts_input_names: list, ts_output_names: list,
+    def __init__(self, ts_input_names: list, ts_output: dict,
                  client: CogniteClient, data_dicts: dict):
         """Provide client and data dictionary for deployment of Cognite Function
 
         Args:
             ts_input_names (list): names for input time series
-            ts_output_names (list): names for output time series
+            ts_output (dict): metadata for output time series
             client (CogniteClient): instantiated CogniteClient
             data_dicts (dict): data dictionary used for Cognite Function
         """
         self.client = client
         self.ts_input_names = ts_input_names
-        self.ts_output_names = ts_output_names
+        self.ts_output = ts_output
         self.data = data_dicts
 
         self.update_ts("ts_input")
@@ -56,7 +56,11 @@ class PrepareTimeSeries:
         if field == "ts_input":
             self.data["ts_input"] = {str(name):{"exists":isinstance(name,str)} for name in self.ts_input_names} # include boolean to check if input is an already existing time series from CDF
         elif field == "ts_output":
-            self.data["ts_output"] = {name:{"exists":False} for name in self.ts_output_names}
+            self.data["ts_output"] = {name:{"exists":False,
+                                            "description":desc,
+                                            "unit":u} for name, desc, u in zip(self.ts_output["names"],
+                                                                                self.ts_output["description"],
+                                                                                self.ts_output["unit"])}
         else:
             self.data[field] = val
 
@@ -105,8 +109,8 @@ class PrepareTimeSeries:
         self.data["ts_input_data"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal only for current date
         self.data["ts_input_backfill"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal for entire backfill period (to be compared when doing next backfilling)
 
-        ts_output_names = [name for name in ts_outputs.keys()]
-        if len(ts_inputs.keys()) > len(ts_outputs.keys()): # multiple input time series used to compute one output time series
+        ts_output_names = ts_outputs.keys()
+        if len(ts_inputs.keys()) > len(ts_output_names): # multiple input time series used to compute one output time series
             ts_output_names = ts_output_names*len(ts_inputs.keys())
 
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
@@ -157,23 +161,6 @@ class PrepareTimeSeries:
 
                 self.run_backfilling(ts_inputs, ts_output_names, calc_func)
 
-            """if "period" in self.data["aggregate"] and "type" in self.data["aggregate"] \
-                and len(backfill_periods) > 0:
-                # If aggregates, run backfilling for last X aggregated periods
-                start_time, end_time = self.get_aggregated_start_end_time(backfill_periods)
-
-                self.data["start_time"] = start_time
-                self.data["end_time"] = end_time
-
-                self.run_backfilling(ts_inputs, ts_output_names, calc_func)
-
-            else: # If no aggregates, run backfilling on each date separately
-                for date in backfill_periods:
-                    self.data["start_time"] = pd.to_datetime(date)
-                    self.data["end_time"] = pd.to_datetime(date+timedelta(days=1))
-
-                    self.run_backfilling(ts_inputs, ts_output_names, calc_func)
-            """
             # STEP 5: After backfilling, retrieve original signal for intended transformation period
             if not ts_inputs[ts_in]["exists"]:
                 self.data["ts_input_data"][ts_in] = float(ts_in)
@@ -185,27 +172,29 @@ class PrepareTimeSeries:
 
             df_orig = self.retrieve_orig_ts(ts_in, ts_out)
 
-            if "period" in self.data["aggregate"] and "type" in self.data["aggregate"]:
+            if "period" in self.data["aggregate"] and "type" in self.data["aggregate"]: # append data part of aggregation period prior to schedule start to data part of shcedule
                 start_time_schedule = self.data["start_time"]
                 start_time_aggregate, _ = self.get_aggregated_start_end_time() # only need start time, not end time
 
-                orig_extid = self.data["ts_input"][ts_in]["orig_extid"]
-                # Retrieve all datapoints from aggregated period NOT part of current schedule
-                df_orig_prev = client.time_series.data.retrieve(external_id=orig_extid,
-                                                                aggregates="average",
-                                                                granularity=f"{self.data['granularity']}s",
-                                                                start=start_time_aggregate,
-                                                                end=start_time_schedule).to_pandas()
-                df_orig_prev = df_orig_prev.rename(columns={orig_extid + "|average": ts_in})
-                df_orig_prev = df_orig_prev.iloc[:-1] # Omit last element as this is first element in df_orig
+                # If schedule starts exactly at aggregated period - nothing to concatenate with scheduled period
+                if start_time_aggregate < start_time_schedule:
+                    orig_extid = self.data["ts_input"][ts_in]["orig_extid"]
+                    # Retrieve all datapoints from aggregated period NOT part of current schedule
+                    df_orig_prev = client.time_series.data.retrieve(external_id=orig_extid,
+                                                                    aggregates="average",
+                                                                    granularity=f"{self.data['granularity']}s",
+                                                                    start=start_time_aggregate,
+                                                                    end=start_time_schedule).to_pandas()
+                    df_orig_prev = df_orig_prev.rename(columns={orig_extid + "|average": ts_in})
+                    df_orig_prev = df_orig_prev.iloc[:-1] # Omit last element as this is first element in df_orig
 
-                df_orig_prev.index = pd.to_datetime(df_orig_prev.index)
-                df_orig.index = pd.to_datetime(df_orig.index)
+                    df_orig_prev.index = pd.to_datetime(df_orig_prev.index)
+                    df_orig.index = pd.to_datetime(df_orig.index)
 
-                df_orig = pd.concat([df_orig_prev, df_orig]) # join scheduled period with remaining aggregated period
-                # df_orig = df_orig.apply(lambda row: getattr(row, self.data["aggregate"]["type"])(), axis=1)
+                    df_orig = pd.concat([df_orig_prev, df_orig]) # join scheduled period with remaining aggregated period
+                    # df_orig = df_orig.apply(lambda row: getattr(row, self.data["aggregate"]["type"])(), axis=1)
 
-                df_orig = pd.DataFrame(df_orig, columns=[ts_in])
+                    df_orig = pd.DataFrame(df_orig, columns=[ts_in])
 
             self.data["ts_input_data"][ts_in] = df_orig[ts_in]
             if self.data["ts_input_backfill"][ts_in] == "null": # if no backfilling for input signal, return original signal
@@ -271,7 +260,12 @@ class PrepareTimeSeries:
             elif not ts_output[ts_out_name]["exists"]:
                 print(f"Output time series {ts_out_name} does not exist. Creating ...")
                 client.time_series.create(TimeSeries(
-                    name=ts_out_name, external_id=ts_out_name, data_set_id=data['dataset_id'], asset_id=asset_id))
+                                                    name=ts_out_name,
+                                                    external_id=ts_out_name,
+                                                    data_set_id=data['dataset_id'],
+                                                    asset_id=asset_id,
+                                                    unit=ts_output[ts_out_name]["unit"],
+                                                    description=ts_output[ts_out_name]["description"]))
 
         return asset_ids
 
@@ -315,8 +309,36 @@ class PrepareTimeSeries:
                                                     )
 
             df = ts_orig.to_pandas()
-            if df.empty:
-                print(f"No data for time series '{ts_in}' for interval: [{start_date}, {end_date}]. Skipping calculations.")
+
+            while df.empty:
+                print(f"No data for time series '{ts_in}' for interval: [{start_date}, {end_date}]. Looking for latest datapoint ...")
+                try:
+                    end_date_new = client.time_series.data.retrieve(external_id=orig_extid,
+                                                                aggregates="average",
+                                                                granularity=f"{data['granularity']}s",
+                                                                start=pd.to_datetime(end_date - timedelta(days=1)), # Go back 1 day to search for latest datapoint
+                                                                end=pd.to_datetime(end_date),
+                                                                limit=None).to_pandas().index[-1]
+                except:
+                    end_date = end_date - timedelta(days=1)
+                    start_date = end_date - timedelta(minutes=int(data["cron_interval_min"]))
+                    continue
+
+                start_date = end_date_new - timedelta(minutes=int(data["cron_interval_min"]))
+
+                self.data["start_time"] = start_date
+                self.data["end_time"] = end_date_new
+
+                ts_orig = client.time_series.data.retrieve(external_id=orig_extid,
+                                                        aggregates="average",
+                                                        granularity=f"{data['granularity']}s",
+                                                        start=pd.to_datetime(
+                                                            start_date),
+                                                        end=pd.to_datetime(
+                                                            end_date),
+                                                        )
+                print(f"Found latest datapoint: {end_date}. New period: [{start_date}, {end_date_new}].")
+                df = ts_orig.to_pandas()
 
             df = df.rename(columns={orig_extid + "|average": ts_in})
             return df

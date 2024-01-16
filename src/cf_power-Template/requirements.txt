@@ -1,11 +1,11 @@
 
 
+numpy
+ipykernel
+cognite-sdk
 python-dotenv
 pytest
-cognite-sdk
-ipykernel
 pandas
-numpy
 indsl
 
 

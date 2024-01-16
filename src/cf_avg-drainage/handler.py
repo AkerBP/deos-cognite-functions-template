@@ -26,7 +26,7 @@ def handle(client: CogniteClient, data: dict) -> str:
     """
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
-    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output"], client, data)
     PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
     ts_in = PrepTS.data["ts_input_data"]
