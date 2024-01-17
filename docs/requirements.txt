@@ -104,7 +104,7 @@ jinja2-time==0.2.0
 jmespath==0.10.0
 joblib==1.2.0
 json5==0.9.6
-jsonschema==4.17.3
+jsonschema==4.21.0
 jupyter==1.0.0
 jupyter_client==7.4.9
 jupyter-console==6.6.3
