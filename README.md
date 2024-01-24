@@ -2,15 +2,18 @@
 ## Introduction
 For a concise guide for deployment of Cognite Functions, see [Cognite-Function-Demonstration](https://github.com/Aker-BP-OpsHub/Cognite-Function-Demonstration).
 
-This project provides a template for using Cognite Functions as a tool for transforming and deploying time series to Cognite Data Fusion (CDF). The framework generalizes to arbitrary calculations of single or multiple time series. The idea is to automate and streamline the process of running semi-advanced calculations on time series. Cognite Charts already provides a user-friendly interface for performing basic calculations of time series. More advanced calculations are supported by importing functionality from [Cognite’s Industrial Data Science Library](https://indsl.docs.cognite.com/). However, the Cognite Functions template in this project is even more versatile in the sense that you can import any data science model or algorithm available in the open-source Python library, providing endless possibilities for calculations.
+This project provides a template for using Cognite Functions as a tool for transforming and deploying time series to Cognite Data Fusion (CDF) for real-time analytics. Using Cognite's Python SDK, the framework supports transformations of single and multiple time series residing in CDF. Python has tons of libraries to satisfy your calculation setup. The idea is to automate and streamline the process of running semi-advanced calculations on time series. Cognite Charts already provides a user-friendly interface for performing basic to semi-advanced calculations, but has a quite limited set of available calculations. This Cognite Function Template is designed to be more versatile in the sense that you can import any data science model or algorithm available in the open-source Python library, providing endless possibilities for calculations.
 
-We demonstrate the framework by transforming a time series of fluid volume percentage to a new time series of daily average drainage rate from the tanks. The new time series is frequently and automatically updated by letting the Cognite Function run on a prescribed schedule. The setup also facilitates backfilling for quality assurance of the new signal. 
-The new time series will be published as a new dataset in the Cognite Fusion Prod tenant and deployed in Grafana dashboards for quick analysis by the end-user.
+The transformed time series is frequently and automatically updated by letting the Cognite Function run on a prescribed schedule. The setup also facilitates backfilling for quality assurance with the original signal. 
+The new time series is published to the [Center of Excellence - Analytics](https://akerbp.fusion.cognite.com/akerbp-dev/data-sets/data-set/1832663593546318?cluster=api.cognitedata.com) dataset in CDF and can be analysed by SMEs and end-users in desired visualization tools connected to CDF.
 
-We further detail how one goes by acquiring read/write access for CDF datasets, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/]. The repository is organized as follows (standard template files in parent folder are omitted).
+We further detail how one goes by acquiring read/write access for CDF resources and dataset, and how to use Cognite Functions from the Python SDK to read, transform and write datasets for CDF. We detail the necessities for the three distinct phases of this process; development, testing and production. The project follows Microsoft's recommended template for Python projects: [https://github.com/microsoft/python-package-template/]. The repository is organized as follows (standard template files in parent folder are omitted).
 ```markdown
+├── data
 ├── docs
-|   ├── development
+|   ├── dev
+|   ├── test
+|   ├── prod
 ├── src
 ├── tests
 ├── authentication-data.env
@@ -153,14 +156,11 @@ client.functions.create(
 )
 ```
 The `file_id` is assigned the id of the newly created zip file.
-### 4. Initial transformation
-Once deployed, we can transform our time series using the Cognite Function. The first call will transform all historic datapoints of the input time series. This could potentially be a lot of data, and since Cognite Function schedules are limited in terms of runtime, we perform our initial transformation by manually calling the Cognite Function. 
-```
-cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
-cognite_function.call(data=data_dict)
-```
-### 5. Set up schedule
-Finally, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. The function receives necessary input data `data_dict` through the `data` argument. The schedule is instantiated by
+### 4. Set up schedule
+Once deployed, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. If the output time series does not exist, the first call will transform all historic data points. This will likely be a lot of data, and since Cognite Functions have a limited runtime of 10-15 minutes, you have two options if the Cognite Function is unable to perform the initial transformation:  
+a) Specify the start date for retrieving historic data through the optional argument "historic_start_time", which will overwrite the true historic start date of the data
+b) Perform initial transformation locally by running `handle(client, data)` with instantiated Cognite `client` and `data` dictionary *with same input parameters as used to set up schedule*
+The schedule is instantiated by
 ```
 client.functions.schedules.create(
     name=f"{data_dict['function_name']}",
@@ -169,11 +169,10 @@ client.functions.schedules.create(
     description=f"Calculation scheduled every 15 minute",
     data=data_dict
 )
-
 ```
-**Steps 2-5 above are collectively run by the function `deploy_cognite_functions.py`.**
-### 6. Repeat calculation for other time series'
-If you want to run the same calculation for another time series input, you simply create a new schedule for the same Cognite Function. To do so, in `run_functions.ipynb` modify `data_dict` with desired parameters (important to set a unique name of the schedule with the `schedule_name` key). Since the Cognite Function is already generated, you can skip running `generate_cf` and jump straight to the initial transformation by running `deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)` and thereafter set up the schedule by running `deploy_cognite_functions(data_dict, client, single_call=False, scheduled_call=True)`.
+**Steps 2-4 above are collectively run by the function `deploy_cognite_functions.py`.**
+### 5. Repeat calculation for other time series'
+If you want to run the same calculation for another time series input, you simply create a new schedule for the same Cognite Function. To do so, in `run_functions.ipynb` modify `data_dict` with desired parameters (important to set a unique name of the schedule with the `schedule_name` key). Since the Cognite Function is already generated, you can skip running `generate_cf` and jump straight to running the initial transformation followed by setup of schedule by running `deploy_cognite_functions(data_dict, client, single_call=False, scheduled_call=True)`. You can also make a single call to the Cognite Function, without setting up a schedule, by running `deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)`.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
@@ -185,12 +184,6 @@ The integrity and quality of the data product is tested using several approaches
 |   └── utils.py
 ```
 where `conftest.py` sets up necessary configurations of the tests, and `test_methods.py` contains the actual unit tests and UaTs. Test scenarios and results for the latter are documented in the file `docs/development/SIT-UaT-Test.xlsx`.
-
-## Improvements for access request system
-Completing all steps in this demonstration, from retrieving the original time series to writing the new time series back to CDF Prod, unfortunately takes an undeseriably long time and is subject to efficiency improvements. The main bottleneck is the process of granting necessary read and write accesses for CDF. 
-- The form for requesting access is more comprehensive than necessary. It is not trivial what to fill out in some sections. Thus, we believe too much time is wasted mailing the CDF Operations team back and fourth for particular guidance. This process has potential for streamlining by transitioning from restriction-based to constraint-based, facilitating a more rapid onboarding process for new developers
-- If you submit a form with the same title as another submitted form, it is considered as a duplicate and will be deleted. Hence, if you fill out something wrong and have to resubmit the form, it is crucial to rename the title. We think this issue should be communicated better by the CDF Ops team to avoid users waiting forever for their submission to be processed
-- The CDF Operations team is by the time of writing (November 2023) understaffed, where a response to your request form is expected to take multiple days, or even weeks, which is too much for new employees that deserves a quick onboarding experience
 
 ## Cognite Functions Template or Cognite Charts?
 Although this template automates many of the sequential steps in the deployment process, it still requires the end-user to write his/her calculation in a Python script, specify parameters and deploy in a coding framework. We are looking into an alternative approach for transforming time series that uses the Cognite Charts user interface, hence reducing the level of abstraction. There are multiple functions already available in Charts, written in the `indsl` Python library, but if you are missing a desired calculation, it is possible to add it to the Charts environment. The idea is to let someone with sufficient coding knowledge write the calculation in the `indsl` package and have the Cognite team validate and deploy the function to Charts. Once deployed, the calculation is available for use by everyone. Thus, one can easily apply the calculation on any time series using low threshold drag and drop functionality, avoiding having to rerun a set of code cells to deploy a new Cognite Function. We believe this approach will appeal to more SMEs. Work is needed, though, to map the feasibility (or tediousness) of contributing with own calculations in the `indsl` library.
