@@ -158,8 +158,8 @@ client.functions.create(
 The `file_id` is assigned the id of the newly created zip file.
 ### 4. Set up schedule
 Once deployed, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. If the output time series does not exist, the first call will transform all historic data points. This will likely be a lot of data, and since Cognite Functions have a limited runtime of 10-15 minutes, you have two options if the Cognite Function is unable to perform the initial transformation:  
-A.  Specify the start date for retrieving historic data through the optional argument "historic_start_time", which will overwrite the true historic start date of the data
-B.  Perform initial transformation locally by running `handle(client, data)` with instantiated Cognite `client` and `data` dictionary *with same input parameters as used to set up schedule*
+- A.  Specify the start date for retrieving historic data through the optional argument "historic_start_time", which will overwrite the true historic start date of the data
+- B.  Perform initial transformation locally by running `handle(client, data)` with instantiated Cognite `client` and `data` dictionary *with same input parameters as used to set up schedule*
 The schedule is instantiated by
 ```
 client.functions.schedules.create(
