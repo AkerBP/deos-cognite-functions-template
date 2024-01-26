@@ -1,4 +1,12 @@
 
+import os
+import sys
+# Set file to system path to allow relative import from parent folder
+parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_path not in sys.path:
+    sys.path.append(parent_path)
+
+from utilities import AGG_PERIOD
 import pandas as pd
 
 def main_aggregate(data, ts_inputs):
@@ -13,16 +21,21 @@ def main_aggregate(data, ts_inputs):
     """
     import numpy as np
 
-    aggregate = data["aggregate"]
-    df_out = pd.DataFrame(index=ts_inputs.index)
-    calc_params = data["calc_params"]
+    try:
+        aggregate = data["optional"]["aggregate"]
+    except:
+        raise KeyError(f"Aggregated calculations require 'aggregate' to be specified as an optional parameter to input data dictionary. Only found the optional parameters: {data['optional'].keys()}")
 
+    out_index = ts_inputs.index.floor(AGG_PERIOD[aggregate["period"]]).unique()
+
+    calc_params = data["calc_params"]
     ts_out = filter_ts(ts_inputs, calc_params)
 
     derivative_value_excl = calc_params['derivative_value_excl']
-    agg_period = {"second":"S", "minute":"T", "hour":"H", "day":"D", "month":"M", "year":"Y"}
+    output_cols = [col for col in ts_inputs.columns if col != "time_sec"]
+    df_out = pd.DataFrame(index=out_index, columns=output_cols)
 
-    for ts in ts_inputs.columns:
+    for ts in output_cols:
         try:
             ts_out[ts+"_derivative"] = np.gradient(ts_out[ts], ts_out["time_sec"])
         except:
@@ -32,13 +45,7 @@ def main_aggregate(data, ts_inputs):
         ts_out[ts+"_drainage"] = ts_out[ts+"_derivative"].apply(
             lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
 
-        if "period" in aggregate and "type" in aggregate:
-            df_out[ts] = ts_out.resample(agg_period[aggregate["period"]])[ts+"_drainage"].agg(aggregate["type"])
-        else:
-            df_out[ts] = ts_inputs[ts] # if no aggregates, make no transformations
-
-    # CF requires dataframe to only have transformed time series as columns. Delete others.
-    df_out = df_out.drop("time_sec", axis=1)
+        df_out[ts] = ts_out.resample(AGG_PERIOD[aggregate["period"]])[ts+"_drainage"].agg(aggregate["type"]).values
 
     return df_out
 
@@ -52,11 +59,12 @@ def filter_ts(ts_inputs, data):
     Returns:
         pd.DataFrame: smoothed signal
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from statsmodels.nonparametric.smoothers_lowess import lowess
 
     df_smooth = pd.DataFrame()
-    ts_inputs["time_sec"] = (ts_inputs.index - datetime(1970, 1, 1)).total_seconds()
+    ts_inputs["time_sec"] = (ts_inputs.index - datetime(1970, 1, 1,
+                                                        tzinfo=timezone.utc)).total_seconds()
 
     if "lowess_frac" in data:
         frac = data["lowess_frac"]
@@ -80,3 +88,40 @@ def filter_ts(ts_inputs, data):
     df_smooth.index = pd.to_datetime(df_smooth["time_sec"], unit="s")
 
     return df_smooth
+
+def main_test(data, ts_inputs):
+    """Sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
+
+    Args:
+        data (dict): parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    ts_out = pd.DataFrame()
+
+    for ts in ts_inputs.columns:
+        ts_out[ts] = ts_inputs[ts].dropna().rolling(window=10).mean().reindex(ts_inputs[ts].index, method="nearest")
+
+    return ts_out
+
+def main_B(data, ts_inputs):
+    """Other sample main function for transforming a set of input timeseries to
+    produce a set of associated output time series.
+
+    Args:
+        data (dict): parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    ts_0 = ts_inputs.iloc[:,0] # first time series in dataframe
+    ts_1 = ts_inputs.iloc[:,1] # second time series ...
+    ts_2 = ts_inputs.iloc[:,2]
+
+    ts_out = ts_0.max() + 2*ts_1 + ts_0*ts_2/5
+
+    return pd.DataFrame(ts_out) # ensure output given as dataframe

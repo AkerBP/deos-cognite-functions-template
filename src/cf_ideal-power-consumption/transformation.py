@@ -12,7 +12,7 @@ def main_ideal_power_consumption(data, ts_inputs):
     Returns:
         pd.DataFrame: data points of output time series
     """
-    ideal_power_consumption = pd.DataFrame(np.zeros(ts_inputs.shape[0]), columns=["TEST_IdealPowerConsumption"], index=ts_inputs[ts_inputs.columns[0]].index)
+    ideal_power_consumption = pd.DataFrame(np.zeros(ts_inputs.shape[0]), columns=list(data["ts_output"].keys()), index=ts_inputs[ts_inputs.columns[0]].index)
     zero_condition = ts_inputs.iloc[:,3] > 0
     nan_condition = ts_inputs.isna().any(axis=1)
 

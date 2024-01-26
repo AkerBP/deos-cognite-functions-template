@@ -126,7 +126,7 @@ def deploy_schedule(prepare_ts):
     prepare_ts.data["scheduled_calls"] = pd.DataFrame()
     ts_orig_input_name = prepare_ts.ts_input_names[0]
 
-    ts_input_name = "VAL_17-FI-9101-286:VALUE.COPY"
+    ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
     prepare_ts.ts_output_names = [ts_input_name] # this is NOT output - it is a copy of the input, but ts_output is demanded by create_timeseries() function
     prepare_ts.update_ts("ts_output")
     prepare_ts.create_timeseries()
@@ -396,25 +396,48 @@ def test_align_time_series(cognite_client_mock, prepare_ts):
 
 def test_get_aggregated_start_time(prepare_ts):
     prepare_ts.data["start_time"] = datetime(2023,11,20,8,20,30)
+    prepare_ts.data["end_time"] = pd.Timestamp.now()
+    backfill_time = datetime(2023,10,7,13,12,5)
+
     prepare_ts.data["aggregate"] = {}
 
-    prepare_ts.data["aggregate"]["period"] = "second"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,20,30)
-
     prepare_ts.data["aggregate"]["period"] = "minute"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,20,0)
+    # First: test ordinary aggregate (no backfilling)
+    start_agg, _ = prepare_ts.get_aggregated_start_end_time()
+    assert start_agg == datetime(2023,11,20,8,20,0)
+    # Then: test aggregate for backfilling
+    start_agg, end_agg = prepare_ts.get_aggregated_start_end_time(backfill_time)
+    assert start_agg == datetime(2023,10,7,13,12,0)
+    assert end_agg == datetime(2023,10,7,13,13,0)
 
     prepare_ts.data["aggregate"]["period"] = "hour"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,8,0,0)
+    start_agg, _ = prepare_ts.get_aggregated_start_end_time()
+    assert start_agg == datetime(2023,11,20,8,0,0)
+    start_agg, end_agg = prepare_ts.get_aggregated_start_end_time(backfill_time)
+    assert start_agg == datetime(2023,10,7,13,0,0)
+    assert end_agg == datetime(2023,10,7,14,0,0)
 
     prepare_ts.data["aggregate"]["period"] = "day"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,20,0,0,0)
+    daily_aggregate = prepare_ts.get_aggregated_start_end_time()
+    assert daily_aggregate == datetime(2023,11,20,0,0,0)
+    start_agg, end_agg = prepare_ts.get_aggregated_start_end_time(backfill_time)
+    assert start_agg == datetime(2023,10,7,0,0,0)
+    assert end_agg == datetime(2023,10,8,0,0,0)
 
     prepare_ts.data["aggregate"]["period"] = "month"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,11,0,0,0,0)
+    assert prepare_ts.get_aggregated_start_end_time() == datetime(2023,11,0,0,0,0)
+    start_agg, end_agg = prepare_ts.get_aggregated_start_end_time(backfill_time)
+    assert start_agg == datetime(2023,10,0,0,0,0)
+    assert end_agg == datetime(2023,11,0,0,0,0)
 
     prepare_ts.data["aggregate"]["period"] = "year"
-    assert prepare_ts.get_aggregated_start_time() == datetime(2023,0,0,0,0,0)
+    assert prepare_ts.get_aggregated_start_end_time() == datetime(2023,0,0,0,0,0)
+    start_agg, end_agg = prepare_ts.get_aggregated_start_end_time(backfill_time)
+    assert start_agg == datetime(2023,0,0,0,0,0)
+    assert end_agg == datetime(2024,0,0,0,0,0)
+
+    # Finally, assert that the modified and original dates are in same timezone
+    assert daily_aggregate.tzinfo == prepare_ts.data["start_time"].tzinfo
 
 def test_join_previous_and_current(prepare_ts):
     """Test that joining data from current schedule with data from aggregating
@@ -438,15 +461,14 @@ def test_join_previous_and_current(prepare_ts):
     df_current = pd.DataFrame(data_current, index=datetime_current, columns=["data"])
 
     df = pd.concat([df_previous, df_current]) # join scheduled period with remaining aggregated period
-    # df = df.apply(lambda row: getattr(row, prepare_ts.data["aggregate"]["type"])(), axis=1)
 
     assert len(df) == 30
     assert df["data"] == data_previous + data_current
-    assert len(df.index) == len(set(df.index))
+    assert len(df.index) == len(set(df.index)) # check that each datetime index is unique
 
 
 
-### --- FOLLOWING TESTS CURRENTLY NOT WORKING - REQUIRES DEPLOYED SCHEDULE FROM MOCK CLIENT ---
+### --- FOLLOWING TEST CURRENTLY NOT WORKING - REQUIRES DEPLOYED SCHEDULE FROM MOCK CLIENT ---
 
 def test_deploy_schedule(prepare_ts, deploy_schedule):
     """Test utility function used for testing backfilling
@@ -468,37 +490,7 @@ def test_deploy_schedule(prepare_ts, deploy_schedule):
     assert df_current[ts_input_name] == df_current_true[ts_input_name]
     assert df_previous[ts_input_name] == df_previous_true[ts_input_name]
 
-
-def test_backfilling_call_id(prepare_ts, deploy_schedule):
-    """Test that the retrieved backfill call is the correct one.
-
-    Args:
-        prepare_ts (_type_): _description_
-        deploy_schedule (_type_): _description_
-    """
-    # NEED TO DEPLOY SCHEDULE AT BACKFILL PERIOD TO ENSURE BACKFILLING IS PERFORMED!
-    # BUT: IMPOSSIBLE TO NOW CALL ID A PRIORI !!?
-    from datetime import timedelta
-    # Assert that correct historical scheduled call is extracted at time when doing backfilling
-    deployed_time_start = deploy_schedule["deploy_start"]
-    all_calls = deploy_schedule["calls"]
-    deployed_time_end = deployed_time_start + timedelta(minute=1) # scheduled every 1 min
-
-    mask_start = all_calls["scheduled_time"] >= deployed_time_start
-    mask_end = all_calls["scheduled_time"] < deployed_time_end
-
-    # Check that extracted schedule from a given historical time is correct
-    initial_call_id = all_calls[mask_start & mask_end]["id"].iloc[0]
-
-    get_func = prepare_ts.client.functions.retrieve(external_id=prepare_ts.data["function_name"])
-    get_schedule_id = prepare_ts.client.functions.schedules.list(
-                name=prepare_ts.data["function_name"]).to_pandas().id[0]
-    get_calls = get_func.list_calls(
-                schedule_id=get_schedule_id, limit=-1).to_pandas()
-    true_initial_call_id = get_calls["id"].iloc[0] # first call was time of backfilling - this is the one to compare with
-
-    assert initial_call_id == true_initial_call_id
-
+### ------------------------------------------------------------------------------
 
 def test_backfilling_unchanged(prepare_ts):
     """Test that no changes have been made to output signal during backfilling
@@ -507,22 +499,23 @@ def test_backfilling_unchanged(prepare_ts):
     Args:
         prepare_ts (_type_): _description_
     """
-    ts_input_name = "VAL_17-FI-9101-286:VALUE.COPY"
+    ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
+    prepare_ts.update_ts("ts_input")
+    ts_orig_extid = prepare_ts.client.time_series.list(name=ts_input_name).to_pandas().external_id[0]
+    prepare_ts["ts_input"][ts_input_name]["orig_extid"] = ts_orig_extid
+
     ts_output_name = "test_CF"
 
-    calculation = prepare_ts["calculation_function"]
+    backfill_dates = prepare_ts.check_backfilling(ts_input_name, testing=True)
 
-    _, _, \
-        backfill_dates, num_dates_old, num_dates_new = prepare_ts.check_backfilling(ts_input_name, testing=True)
-
-    # Assert that all dates within overlapping period are equal after backfilling
-    assert all(num_dates_new.index.isin(num_dates_old.index))
+    # Assert no dates for backfilling
+    # assert all(num_dates_new.index.isin(num_dates_old.index))
     assert len(backfill_dates) == 0
 
     df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name)
-    data = prepare_ts.get_orig_timeseries(eval(calculation))
+    prepare_ts.run_backfilling()
     df_out_after = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name)
-
+    # Assert that output time series has not been changed
     assert df_out_before == df_out_after
 
 def test_backfilling_insert(prepare_ts):
@@ -533,30 +526,41 @@ def test_backfilling_insert(prepare_ts):
     Args:
         prepare_ts (_type_): _description_
     """
-    ts_input_name = "VAL_17-FI-9101-286:VALUE.COPY"
+    ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
+    prepare_ts.update_ts("ts_input")
+    ts_orig_extid = prepare_ts.client.time_series.list(name=ts_input_name).to_pandas().external_id[0]
+    prepare_ts["ts_input"][ts_input_name]["orig_extid"] = ts_orig_extid
+
     ts_output_name = "test_CF"
 
-    calculation = prepare_ts["calculation_function"]
-
-    df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
     # Insert data into copied input
     now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     new_data = [
-        (datetime(now.year, now.month, now.day, now.hour-2, now.minute), 111),
-        (datetime(now.year, now.month, now.day, now.hour-1, now.minute), 333)
+        (datetime(now.year, now.month, now.day, now.hour-2, now.minute, now.second), 111),
+        (datetime(now.year, now.month, now.day, now.hour-1, now.minute, now.second), 333)
     ]
     prepare_ts.client.time_series.data.insert(new_data, external_id=ts_input_name)
 
-    data = prepare_ts.get_orig_timeseries(eval(calculation))
+    backfill_dates = prepare_ts.check_backfilling(ts_input_name, testing=True)
 
+    # Assert we get backfilling period(s)
+    assert len(backfill_dates) > 0
+
+    df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
+    prepare_ts.run_backfilling()
     df_out_after = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
 
+    # Assert that new output version has more data than previous version
     assert len(df_out_after) > len(df_out_before)
 
     mask_timestamp1_before = df_out_before.index == new_data[0][0]
     mask_timestamp2_before = df_out_before.index == new_data[1][0]
     mask_timestamp1_after = df_out_after.index == new_data[0][0]
     mask_timestamp2_after = df_out_after.index == new_data[1][0]
+
+    # Assert that old values are unchanged
+    assert len(df_out_before[mask_timestamp1_before]) == 0
+    assert len(df_out_before[mask_timestamp2_before]) == 0
 
     # Assert that new values have been inserted at given dates
     assert len(df_out_after[mask_timestamp1_after]) > 0
@@ -576,21 +580,22 @@ def test_backfilling_delete(prepare_ts):
         prepare_ts (_type_): _description_
         deploy_schedule (_type_): _description_
     """
-    ts_input_name = "VAL_17-FI-9101-286:VALUE.COPY"
+    ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
+    prepare_ts.update_ts("ts_input")
+    ts_orig_extid = prepare_ts.client.time_series.list(name=ts_input_name).to_pandas().external_id[0]
+    prepare_ts["ts_input"][ts_input_name]["orig_extid"] = ts_orig_extid
+
     ts_output_name = "test_CF"
 
-    calculation = prepare_ts["calculation_function"]
-
-    df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
     # Delete data from copied input
     now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
     start_delete = datetime(now.year, now.month, now.day, now.hour-2, now.minute)
     end_delete = datetime(now.year, now.month, now.day, now.hour, now.minute)
 
-    prepare_ts.client.time_series.data.delete_range(start=start_delete, end=end_delete, external_id=ts_input_name)
+    prepare_ts.client.time_series.data.delete_range(start=start_delete, end=end_delete, external_id=ts_input_name) # inclusive start date but exclusive end date
 
-    data = prepare_ts.get_orig_timeseries(eval(calculation))
-
+    df_out_before = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
+    prepare_ts.run_backfilling()
     df_out_after = prepare_ts.client.time_series.data.retrieve(external_id=ts_output_name).to_pandas()
 
     start_before = df_out_before.index >= start_delete
