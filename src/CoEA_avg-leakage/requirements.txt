@@ -1,0 +1,13 @@
+
+ 
+pytest 
+pyarrow 
+statsmodels 
+python-dotenv 
+ipykernel 
+pandas 
+numpy 
+cognite-sdk 
+openpyxl 
+
+

@@ -22,7 +22,7 @@ if parent_path not in sys.path:
 from transformation_utils import RunTransformations
 from handler_utils import PrepareTimeSeries
 from initialize import initialize_client
-from deploy_cognite_functions import deploy_cognite_functions, list_scheduled_calls
+from deploy_cognite_functions import deploy_cognite_functions
 from generate_cf import generate_cf, write_handle, write_transformation, get_toml_dependencies
 
 @pytest.fixture

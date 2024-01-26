@@ -22,7 +22,7 @@ if parent_path not in sys.path:
 from transformation_utils import RunTransformations
 from handler_utils import PrepareTimeSeries
 from initialize import initialize_client
-from deploy_cognite_functions import deploy_cognite_functions, list_scheduled_calls
+from deploy_cognite_functions import deploy_cognite_functions
 from generate_cf import generate_cf
 
 CREATED_TIMESERIES = [
@@ -106,152 +106,10 @@ def prepare_ts(cognite_client_mock):
     prepTS = PrepareTimeSeries(ts_input_names, ts_output_names, client, data_dict)
     return prepTS
 
-@pytest.fixture
-def deploy_schedule(prepare_ts):
-    """Fixture for deploying a test CF schedule
-
-    Args:
-        prepare_ts (pytest.fixture): PrepareTimeSeries object
-
-    Returns:
-        schedule_data (dict): parameters for deployed schedule
-    """
-    import time
-    from datetime import datetime, timedelta
-
-    # prepare_ts.client: monkeypatch test client
-    # prepare_ts.data["client"]: default client
-    # prepare_ts.client = prepare_ts.data["client"]
-
-    prepare_ts.data["scheduled_calls"] = pd.DataFrame()
-    ts_orig_input_name = prepare_ts.ts_input_names[0]
-
-    ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
-    prepare_ts.ts_output_names = [ts_input_name] # this is NOT output - it is a copy of the input, but ts_output is demanded by create_timeseries() function
-    prepare_ts.update_ts("ts_output")
-    prepare_ts.create_timeseries()
-    time.sleep(5) # pause some seconds to let (copied) Time Series object finish creating
-    # update input time series after created the copy
-    prepare_ts.ts_input_names = [ts_input_name]
-    prepare_ts.data["ts_input_names"] = [ts_input_name]
-    prepare_ts.update_ts("ts_input")
-    # also update output time series
-    ts_output_name = "test_CF"
-    prepare_ts.ts_output_names = [ts_output_name]
-    prepare_ts.data["ts_output_names"] = [ts_output_name]
-    prepare_ts.update_ts("ts_output")
-    prepare_ts.create_timeseries()
-
-    del prepare_ts.data["scheduled_calls"] # not JSON serializable - need to remove before calling
-
-    ts_orig = prepare_ts.client.time_series.list(name=ts_orig_input_name).to_pandas()
-    ts_extid = ts_orig.external_id[0]
-    # Insert datapoints into copied input time series
-    end_time = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
-    start_time = end_time - timedelta(days=5)
-    input_data = prepare_ts.client.time_series.data.retrieve(external_id=ts_extid,
-                                                             start=pd.to_datetime(start_time),
-                                                             end=pd.to_datetime(end_time),
-                                                             limit=-1).to_pandas()
-
-    input_data = input_data.rename(columns={input_data.columns[0]: ts_input_name})
-    prepare_ts.client.time_series.data.insert_dataframe(input_data)
-
-    cdf_env = "dev"
-    prepare_ts.data["cdf_env"] = cdf_env
-    cron_interval = str(1)
-    prepare_ts.data["cron_interval_min"] = cron_interval
-    prepare_ts.data["function_name"] = "cf_test"
-    prepare_ts.data["schedule_name"] = "cf_test"
-    prepare_ts.data["calculation_function"] = "main_test"
-
-    generate_cf("test")
-    # First: Make single call to function to perform initial transformation
-    deploy_cognite_functions(prepare_ts.data, prepare_ts.client,
-                            True, False)
-    # Let backfill period be current timestamp - return argument to be compared to
-    now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
-    while int(str(now.minute)[-1]) < 9 or now.second < 50: # create schedule at 9th minute, first call then at 0th minute for next 10-min period
-        time.sleep(1)
-        now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
-    prepare_ts.data["backfill_hour"] = now.hour
-    prepare_ts.data["backfill_min_start"] = 0#now.minute
-    prepare_ts.data["backfill_min_end"] = 1#now.minute + 1
-    print("Now #1: ", now.hour)
-    # Then: Run function on schedule
-    deployed_time_start = datetime(now.year, now.month, now.day, now.hour, now.minute)
-
-    deploy_cognite_functions(prepare_ts.data, prepare_ts.client,
-                            False, True)
-
-    schedule_id, all_calls = list_scheduled_calls(prepare_ts.data, prepare_ts.client)
-
-    while len(all_calls) < 11: # wait until we have total of 11 calls from schedule (1st call is first backfilling, 11th call is second backfilling)
-        time.sleep(30)
-        schedule_id, all_calls = list_scheduled_calls(prepare_ts.data, prepare_ts.client)
-
-    schedule_data = {"schedule_id":schedule_id, "calls":all_calls, "deploy_start":deployed_time_start}
-
-    get_func = prepare_ts.client.functions.retrieve(external_id=prepare_ts.data["function_name"])
-
-    last_backfill_id = all_calls.id[len(all_calls)-1] # [len(all_calls)-1] retrieves first backfilling schedule
-    last_backfill_call = get_func.retrieve_call(id=last_backfill_id)
-    print("Response:", last_backfill_call.get_response())
-    output_dict = ast.literal_eval(last_backfill_call.get_response())[
-            ts_input_name]
-
-    output_df = pd.DataFrame.from_dict([output_dict]).T
-    output_df.index = pd.to_datetime(
-        output_df.index.astype(np.int64), unit="ms")
-    output_df["Date"] = output_df.index.date  # astype(int)*1e7 for testing
-    previous_df = output_df.rename(columns={0: ts_input_name})
-
-    end_date = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
-    start_date = end_date - timedelta(days=prepare_ts.data["backfill_days"])
-    schedule_data["start_time"] = start_date
-    schedule_data["end_time"] = end_date
-    ts_orig_all = prepare_ts.client.time_series.data.retrieve(external_id=ts_input_name,
-                                                    aggregates="average",
-                                                    granularity=f"{prepare_ts.data['granularity']}s",
-                                                    start=start_date,
-                                                    end=end_date,
-                                                    limit=-1,
-                                                    ).to_pandas()
-
-    ts_orig_all = ts_orig_all.rename(
-        columns={ts_input_name + "|average": ts_input_name})
-
-    ts_orig_dates = pd.DataFrame(
-            {"Date": pd.to_datetime(ts_orig_all.index.date),
-            ts_input_name: ts_orig_all[ts_input_name]},
-            index=pd.to_datetime(ts_orig_all.index))
-
-    schedule_data["df_ts_previous"] = previous_df # dataframe of previous time series signal
-    schedule_data["df_ts_current"] = ts_orig_dates # dataframe of current time series signal
-
-    return schedule_data
 
 @pytest.fixture
 def calculation(data, ts):
     return (ts - 10).squeeze()
-
-def test_get_schedules_and_calls(cognite_client_mock, prepare_ts, deploy_schedule):
-    # WAIT FOR THIS TEST AFTER SCHEDULE HAS BEEN DEPLOYED WITH deploy_schedule FIXTURE
-    schedule_data = deploy_schedule(prepare_ts)
-    assert cognite_client_mock.schedules.create.call_count == 1
-    created_schedule = [sched.dump() for sched in CREATED_SCHEDULE]
-    created_schedule_true = [sched.dump() for sched in cognite_client_mock.schedules.create.call_args[0]]
-    assert created_schedule == created_schedule_true
-    # 10 calls to schedules expected
-    schedule_id, calls = prepare_ts.get_schedules_and_calls()
-    assert len(calls) == 10
-    retrieved_functions = [func.dump() for func in RETRIEVED_FUNCTION]
-    retrieved_functions_true = [func.dump() for func in cognite_client_mock.functions.retrieve.call_args[0]]
-    assert retrieved_functions == retrieved_functions_true
-
-    listed_schedules = [sched.dump() for sched in LIST_SCHEDULES]
-    listed_schedules_true = [sched.dump() for sched in cognite_client_mock.schedules.list.call_args[0]]
-    assert listed_schedules == listed_schedules_true
 
 
 def test_create_timeseries(cognite_client_mock, prepare_ts):
@@ -467,31 +325,6 @@ def test_join_previous_and_current(prepare_ts):
     assert len(df.index) == len(set(df.index)) # check that each datetime index is unique
 
 
-
-### --- FOLLOWING TEST CURRENTLY NOT WORKING - REQUIRES DEPLOYED SCHEDULE FROM MOCK CLIENT ---
-
-def test_deploy_schedule(prepare_ts, deploy_schedule):
-    """Test utility function used for testing backfilling
-
-    Args:
-        prepare_ts (_type_): _description_
-        deploy_schedule (_type_): _description_
-    """
-    ts_input_name = "VAL_17-FI-9101-286:VALUE"
-    df_previous_true = deploy_schedule["df_ts_previous"]
-    df_current_true = deploy_schedule["df_ts_current"]
-    # current_start_date = deploy_schedule["start_time"]
-    # current_end_date = deploy_schedule["end_time"]
-
-
-    df_current, df_previous, \
-        _, _, _ = prepare_ts.check_backfilling(ts_input_name, testing=True)
-
-    assert df_current[ts_input_name] == df_current_true[ts_input_name]
-    assert df_previous[ts_input_name] == df_previous_true[ts_input_name]
-
-### ------------------------------------------------------------------------------
-
 def test_backfilling_unchanged(prepare_ts):
     """Test that no changes have been made to output signal during backfilling
     when no changes in input signal.
@@ -578,7 +411,6 @@ def test_backfilling_delete(prepare_ts):
 
     Args:
         prepare_ts (_type_): _description_
-        deploy_schedule (_type_): _description_
     """
     ts_input_name = "VAL_17-FI-9101-286:VALUE_COPY"
     prepare_ts.update_ts("ts_input")

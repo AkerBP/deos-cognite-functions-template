@@ -20,12 +20,9 @@ from cognite.client.exceptions import CogniteAPIError
 
 logger = logging.getLogger(__name__)
 
-# parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# if parent_path not in sys.path:
-#     sys.path.append(parent_path)
-
 from transformation_utils import RunTransformations
-from utilities import AGG_PERIOD, dataframe_to_bytes
+from utilities import dataframe_to_bytes, get_external_id_from_name
+from utilities import AGG_PERIOD
 
 class FunctionDeployError(Exception):
     pass
@@ -102,15 +99,10 @@ class PrepareTimeSeries:
             # Check if transformed time series already exists
             ts_outputs[ts_out_name]["exists"] = not ts_leak.empty
 
-        my_schedule_id, all_calls = self.get_schedules_and_calls()
-        self.data["schedule_id"] = my_schedule_id
-        self.data["scheduled_calls"] = all_calls
-
         # Create new time series, if not already exists
         self.create_timeseries()
 
         self.data["ts_input_data"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal only for current date
-        self.data["ts_input_backfill"] = {ts_name: [] for ts_name in ts_inputs.keys()} # stores original signal for entire backfill period (to be compared when doing next backfilling)
 
         ts_output_names = list(ts_outputs.keys())
         if len(ts_inputs.keys()) > len(ts_output_names): # multiple input time series used to compute one output time series
@@ -121,17 +113,14 @@ class PrepareTimeSeries:
             if not ts_inputs[ts_in]["exists"]:
                 continue # input not in CDF, provided separately, skip to next input
 
-            # STEP 2: Retrieve time series and function schedules
-            ts_orig = client.time_series.list(
-                name=ts_in).to_pandas()  # original time series (vol percentage)
-
             try:
-                ts_inputs[ts_in]["orig_extid"] = ts_orig.external_id[0]
+                ts_inputs[ts_in]["orig_extid"] = get_external_id_from_name(client, ts_in)
             except:
                 raise KeyError(f"Input time series {ts_in} does not exist.")
 
         all_orig_extid = [ts_inputs[ts_in]["orig_extid"] for ts_in in ts_inputs.keys() if ts_inputs[ts_in]["exists"]]
 
+        # Find latest datetime for which all inputs have a value for:
         df_orig = pd.DataFrame()
         nonan = False
         num_days = 1
@@ -147,35 +136,31 @@ class PrepareTimeSeries:
             if not nonan:
                 print(f"No/nan data found for period [{start_date}, {end_date}]. Rewinding 1 day ...")
 
-        # Find latest datetime for which all inputs have a value for:
         latest_end = df_orig.dropna().index.max()
         latest_start = latest_end - timedelta(minutes=int(self.data["cron_interval_min"]))
 
         self.data["ts_input"] = ts_inputs # update dictionary
 
+        # MAIN RETRIEVAL LOOP
         for ts_in, ts_out in zip(ts_inputs.keys(), ts_output_names):
 
             data_in = ts_inputs[ts_in]
             data_out = ts_outputs[ts_out]
 
             if not data_in["exists"]:
+                self.data["ts_input_data"][ts_in] = float(ts_in)
                 continue # input not in CDF, provided separately, skip to next input
 
-            ts_input_backfill = json.dumps(None)
-
-            # STEP 3: Identify backfill candidates
+            # STEP 1: Identify backfill candidates
             backfill_periods = []
 
-            # TODO TODO TODO Retrieve end_date.hour below !!!
             if end_date.hour == self.data["backfill_hour"] and \
                end_date.minute >= self.data["backfill_min_start"] and \
                 end_date.minute < self.data["backfill_min_end"] \
                 and data_out["exists"]: # TODO: Change to 23 hours and 45 minutes.
                     backfill_periods = self.check_backfilling(ts_in)
 
-            self.data["ts_input_backfill"][ts_in] = ts_input_backfill
-
-            # STEP 4: Perform backfilling on dates with discrepancies in datapoints
+            # STEP 2: Perform backfilling on dates with discrepancies in datapoints
             for period in backfill_periods:
                 if "aggregate" in self.data["optional"]:
                     # If aggregates, for each "changed" period, run backfilling over a single aggregation period
@@ -190,11 +175,7 @@ class PrepareTimeSeries:
 
                 self.run_backfilling(calc_func)
 
-            # STEP 5: After backfilling, retrieve original signal for intended transformation period
-            if not ts_inputs[ts_in]["exists"]:
-                self.data["ts_input_data"][ts_in] = float(ts_in)
-                continue # input not from CDF, skip to next input
-
+            # STEP 3: After backfilling, retrieve original signal for intended transformation period
             # Start and end times may have been modified by backfilling. Retrieve original times.
             self.data["start_time"] = latest_start#start_date
             self.data["end_time"] = latest_end#end_date
@@ -226,42 +207,10 @@ class PrepareTimeSeries:
 
                     df_orig = pd.DataFrame(df_orig, columns=[ts_in])
 
+            # STEP 4: Store time series signal in data dictionary
             self.data["ts_input_data"][ts_in] = df_orig[ts_in]
-            if self.data["ts_input_backfill"][ts_in] == "null": # if no backfilling for input signal, return original signal
-                self.data["ts_input_backfill"][ts_in] = ast.literal_eval(df_orig[ts_in].to_json())
 
-        self.data["ts_input_backfill"] = json.dumps(self.data["ts_input_backfill"])
         return self.data
-
-
-    def get_schedules_and_calls(self) -> Tuple[int, pd.DataFrame]:
-        """Return ID of schedule that is currently running for this function,
-        and a list of all calls made to this schedule.
-
-        Returns:
-            (int): id of schedule
-            (pd.DataFrame): table of calls made
-        """
-
-        data = self.data
-        client = self.client
-
-        my_func = client.functions.retrieve(external_id=data["function_name"])
-        if my_func is None:
-            err = f"No function with external_id={data['function_name']} exists."
-            logger.warning(err)
-            raise FunctionDeployError(err)
-
-        try:
-            my_schedule_id = client.functions.schedules.list(
-                name=data["function_name"]).to_pandas().id[0]
-            all_calls = my_func.list_calls(
-                schedule_id=my_schedule_id, limit=-1).to_pandas()
-        except:  # No schedule exist
-            my_schedule_id = None
-            all_calls = pd.DataFrame()
-
-        return my_schedule_id, all_calls
 
 
     def create_timeseries(self) -> list:
@@ -383,7 +332,8 @@ class PrepareTimeSeries:
 
 
     def align_time_series(self, ts_all: list) -> list:
-        """Align input time series to cover same data range.
+        """Convert all inputs to dataframes,
+        and align input time series to cover same data range.
 
         Args:
             ts_all (list): list of input time series (pd.DataFrame or scalars)
@@ -409,7 +359,7 @@ class PrepareTimeSeries:
             ts_all[ts_df[i][0]] = ts_df[i][1]
 
         for i in range(len(ts_scalars)):
-            ts_scalars[i][1] = pd.DataFrame(ts_scalars[i][1]*np.ones(len(ts_df[0][1])), index=ts_df[0][1].index) # can simply choose one of the dfs, they have the same index at this point anyway
+            ts_scalars[i][1] = pd.DataFrame(ts_scalars[i][1]*np.ones(len(ts_df[0][1])), index=ts_df[0][1].index, columns=[f"scalar{i}"]) # can simply choose one of the dfs, they have the same index at this point anyway
             ts_all[ts_scalars[i][0]] = ts_scalars[i][1]
 
         ts_all = pd.concat(ts_all, axis=1) # concatenate along date
@@ -417,10 +367,10 @@ class PrepareTimeSeries:
         return ts_all
 
     def get_ts_df(self) -> list:
-        """List all input time series as dataframes objects
+        """List all input time series as dataframes (if time series from CDF) or scalars (if single scalar provided)
 
         Returns:
-            (list): list of time series dataframes
+            (list): list of formatted time series
         """
         ts_data = self.data["ts_input_data"]
         ts_data = [ts_data[name] if isinstance(ts_data[name], float) else pd.DataFrame(ts_data[name]) for name in ts_data]
@@ -534,10 +484,13 @@ class PrepareTimeSeries:
         client.files.delete(external_id=file_name)
         client.files.upload_bytes(content=BytesIO(current_bytes), external_id=file_name, name=f"{file_name}.xlsx",
                                 data_set_id=data["dataset_id"], mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        # ts_orig_all.to_excel(f"{file_name}.xlsx", index=True) # IMPORTANT: overwrite data AFTER reading previous data
+
         return backfill_periods
 
     def run_backfilling(self):
+        """Runs backfilling for time interval given by
+        self.data["start_date"] and self.data["end_date"].
+        """
         ts_input = self.data["ts_input"]
         ts_output = self.data["ts_output"]
         calc_func = self.data["calculation_function"]

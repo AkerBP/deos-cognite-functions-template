@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "coea-avg-leakage"
+version = "0.1.0"
+description = ""
+authors = ["vetlenev <vetle.nevland@akerbp.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pytest = "^7.4.4"
+pyarrow = "^15.0.0"
+statsmodels = "^0.14.1"
+python-dotenv = "^1.0.1"
+ipykernel = "^6.29.0"
+pandas = "^2.2.0"
+numpy = "^1.26.3"
+cognite-sdk = "^7.15.1"
+openpyxl = "^3.1.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
