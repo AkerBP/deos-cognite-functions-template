@@ -40,6 +40,11 @@ poetry config virtualenvs.in-project true
 ```
 poetry install
 ```
+5. Activate the poetry environment
+```
+.venv/Scripts/activate
+```
+and select `.venv` as kernel in the interactive script `src/run_functions.ipynb`
 
 ## Authentication with Python SDK.
 To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
