@@ -73,63 +73,72 @@ config = ClientConfig(
 - For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
 
 ## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. There are six primary steps, and the jupyter file `src/run_functions.ipynb` is devoted for this purpose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
+This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this purpose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
 ### Structure
 The `src` folder is organized as follows.
 ```markdown
 ├── src
 |   ├── README.md
 |   ├── __init__.py
-│   ├── cf_avg_drainage_rate
+│   ├── CoEA_avg-drainage
 │   │   ├── requirements.txt
 │   │   ├── handler.py
 │   │   ├── transformation.py
 │   │   ├── poetry.lock
 │   │   ├── pyproject.toml
 │   │   ├── zip_handle.zip
-│   ├── cf_A
+│   ├── *ds_A*_*func_X*
 │   │   ├── requirements.txt
 │   │   ├── handler.py
 │   │   ├── transformation.py
 │   │   ├── poetry.lock
 │   │   ├── pyproject.toml
 │   │   ├── zip_handle.zip
-│   ├── cf_B
+│   ├── *dataset_B*_*func_Y*
 │   ├── handler_utils.py
 │   ├── transformation_utils.py
-│   ├── cognite_authentication.py
 │   ├── initialize.py
 │   ├── generate_cf.py
 │   ├── deploy_cognite_functions.py
+│   ├── utilities.py
 │   └── run_functions.ipynb
 ```
-Here we find authentication scripts `cognite_authentication.py` and `initialize.py`, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, an interactive script `run_functions.ipynb` to actually deploy a Cognite Function, and utility scripts `handler_utils.py` and `transformation_utils.py` containing the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Function scheduling. 
+Here we find a script `initialize.py` for authenticating with Cognite, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, an interactive script `run_functions.ipynb` to actually deploy a Cognite Function, and utility scripts `utilities.py`, `handler_utils.py` and `transformation_utils.py`, where the two latter implement the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Function scheduling. 
 
-The subfolder `cf_*myname*` contains all files specific for your Cognite Function labeled `myname` (where convention is that different words in `myname` are separated by dashes (-).
+The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`.
 - **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`. Regardless of Cognite Function, the `handle` function reads
 ```
-def handle(client, data):
+def handle(client: CogniteClient, data: dict) -> str:
     calculation = data["calculation_function"]
 
-    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
-    data = PrepTS.get_orig_timeseries(eval(calculation))
-    ts_df = PrepTS.get_ts_df()
-    ts_df = PrepTS.align_time_series(ts_df)
-   
-    transform_timeseries = RunTransformations(data, ts_df)
-    ts_out = transform_timeseries(eval(calculation))
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output"], client, data)
+    PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
-    df_out = transform_timeseries.store_output_ts(ts_out)
-    client.time_series.data.insert_dataframe(df_out)
+    ts_in = PrepTS.data["ts_input_data"]
+    ts_out = PrepTS.data["ts_output"]
+    all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
 
-    return data["ts_input_backfill"]
+    if not all_inputs_empty:
+        df_in = PrepTS.get_ts_df()
+        df_in = PrepTS.align_time_series(df_in)
+
+        transform_timeseries = RunTransformations(PrepTS.data, df_in)
+        df_out = transform_timeseries(eval(calculation))
+
+        assert_df(df_out, ts_in, ts_out)
+
+        df_out = transform_timeseries.store_output_ts(df_out)
+        client.time_series.data.insert_dataframe(df_out)
+
+    return df_out.to_json()
 ```
-  where the only modification required is a programmatic setup of your calculation in the `calculation` function (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_in` of time series inputs. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
-- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation should return a `pandas.DataFrame` object where each column corresponds to one of the transformed input time series (column name being the name of the associated input time series). The main function should follow the naming convention `main_*my_calc_name*`, where *my_calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `main_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `main_`.
+  where the ***only modification required is a programmatic setup of your calculation in the `calculation` function*** (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_inputs` of time series inputs. A function `assert_df` is dedicated to check that what the `calculation` function returns is in compliance with the requirements of the template. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
+- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation (i.e., the one retrieved from `data["calculation_function"]` in the `handle` function) should return a `pandas.DataFrame` where each column corresponds to one of the time series outputs. The returned dataframe should follow these requirements:
+  - must have a pandas datetime index representing the timestamp for each value
+  - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
+The main function should follow the naming convention `main_*calc_name*`, where *calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `main_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `main_`.
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
-
-The desired Cognite Function *myname* is run by supplying *myname* as value to the `function_name` key in the `data` argument of `handle`, i.e., `data['function_name'] = myname`. The same principle applies for the calculation function *my_calc_name', i.e., `data['calculation_function'] = my_calc_name`. Here, `data` corresponds to the `data_dict` dictionary in `run_functions.ipynb`.
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
 
@@ -148,7 +157,7 @@ uploaded = client.files.upload(path=f"{folder_cf}/{zip_name}", name=zip_name, da
 ```
 The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
 ### 3. Deployment
-The next step is to create an instance of the `handle` function (located in the subfolder `cf_*myname*`) to be deployed to CDF. 
+The next step is to create an instance of the `handle` function (located in the subfolder `*ds*_*func*`) to be deployed to CDF. 
 ```
 client.functions.create(
     name=f"{data_dict['function_name']}",
@@ -158,18 +167,20 @@ client.functions.create(
 ```
 The `file_id` is assigned the id of the newly created zip file.
 ### 4. Set up schedule
-Once deployed, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified using the cron expression `*/15 * * * *`. If the output time series does not exist, the first call will transform all historic data points. This will likely be a lot of data, and since Cognite Functions have a limited runtime of 10-15 minutes, you have two options if the Cognite Function is unable to perform the initial transformation:  
+Once deployed, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified by setting `data_dict["cron_interval_min"] = str(15)`. If the output time series does not exist, the first call will transform all historic data points. This will likely be a lot of data, and since Cognite Functions have a limited runtime of 10-15 minutes, you have two options if the Cognite Function is unable to perform the initial transformation:  
 - A.  Specify the start date for retrieving historic data through the optional argument "historic_start_time", which will overwrite the true historic start date of the data
 - B.  Perform initial transformation locally by running `handle(client, data)` with instantiated Cognite `client` and `data` dictionary *with same input parameters as used to set up schedule*
 
 The schedule is instantiated by
 ```
 client.functions.schedules.create(
-    name=f"{data_dict['function_name']}",
-    cron_expression="*/15 * * * *", # every 15 min
+    name=f"{data_dict['schedule_name']}",
+    cron_expression=f"*/{data_dict['cron_interval_min']} * * * *", # every cron_interval min
     function_id=cognite_function.id,
-    description=f"Calculation scheduled every 15 minute",
-    data=data_dict
+    client_credentials=ClientCredentials(client_id=str(os.getenv("CLIENT_ID")),
+                                         client_secret=str(os.getenv("CLIENT_SECRET"))),
+    description=f"Calculation scheduled every {data_dict['cron_interval_min']} minute",
+    data=data_dict,
 )
 ```
 **Steps 2-4 above are collectively run by the function `deploy_cognite_functions.py`.**
