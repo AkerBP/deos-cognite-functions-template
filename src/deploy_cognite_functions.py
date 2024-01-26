@@ -6,6 +6,10 @@ import time
 
 from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
+from cognite.client.data_classes import ClientCredentials
+
+from dotenv import load_dotenv
+load_dotenv("../authentication-ids.env")
 
 def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
                              single_call=True, scheduled_call=False):
@@ -21,7 +25,6 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
     Raises:
         FileNotFoundError: If zip-file connected to associated dataset is not found.
     """
-    func_limits = functions.FunctionsLimits(timeout_minutes=60, cpu_cores=0.25, memory_gb=1, runtimes=["py39"], response_size_mb=2.5)
     cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
 
     if cognite_function is None: # function not exist, create ...
@@ -58,6 +61,7 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
                                 external_id=f"{data_dict['function_name']}",
                                 # folder=".",
                                 file_id=uploaded.id,
+                                runtime="py311"
                             )
 
         cognite_function = client.functions.retrieve(external_id=f"{data_dict['function_name']}")
@@ -80,21 +84,20 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
         cron_interval = data_dict["cron_interval_min"]
 
         now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
-        if data_dict["granularity"] >= 60:
-            print("Preparing schedule to start sharp at next minute ...")
-            while now.second > 0: # Align schedule to start at minute sharp, for sampling rate >= 1 min
-                time.sleep(1)
-                now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
+        print("Preparing schedule to start sharp at next minute ...")
+        while now.second > 0: # Align schedule to start at minute sharp, for sampling rate >= 1 min
+            time.sleep(1)
+            now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
 
         print(f"Setting up Cognite Function schedule at time {now} ...")
         client.functions.schedules.create(
             name=f"{data_dict['schedule_name']}",
             cron_expression=f"*/{cron_interval} * * * *", # every cron_interval min
             function_id=cognite_function.id,
-            #client_credentials=client,
+            client_credentials=ClientCredentials(client_id=str(os.getenv("CLIENT_ID")),
+                                                 client_secret=str(os.getenv("CLIENT_SECRET"))),
             description=f"Calculation scheduled every {cron_interval} minute",
             data=data_dict,
-
         )
         print("... Done")
 

@@ -49,8 +49,6 @@ def generate_cf(cf_name: str, add_packages: list = []):
 
     os.chdir(src_dir)
 
-
-
 def get_toml_dependencies(path_to_cf: str, path_to_toml: str = "", include_version: bool = True):
     if len(path_to_toml) > 0 and path_to_toml[-1] != "/":
         path_to_toml = path_to_toml+"/"
@@ -74,21 +72,11 @@ def get_toml_dependencies(path_to_cf: str, path_to_toml: str = "", include_versi
 
         file.close()
 
-def move_file_to_subfolders(file_path, subfolder_prefix):
-    src_directory = os.getcwd()
-    subfolders = [folder for folder in os.listdir(src_directory) if os.path.isdir(folder) and folder.startswith(subfolder_prefix)]
-
-    for subfolder in subfolders:
-        destination_path = os.path.join(src_directory, subfolder, os.path.basename(file_path))
-        shutil.copy(file_path, destination_path)
-        print(f"Moved {file_path} to {destination_path}")
-    print(f"Removed {file_path} from {os.getcwd()}")
-    os.remove(file_path)
-
 def write_handle():
     return '''
 import os
 import sys
+import pandas as pd
 from datetime import datetime
 
 # Set file to system path to allow relative import from parent folder
@@ -114,10 +102,11 @@ def handle(client: CogniteClient, data: dict) -> str:
     """
     calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
-    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output_names"], client, data)
+    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output"], client, data)
     PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
     ts_in = PrepTS.data["ts_input_data"]
+    ts_out = PrepTS.data["ts_output"]
     all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
 
     if not all_inputs_empty: # can't run calculations if any time series is empty for defined interval
@@ -128,19 +117,127 @@ def handle(client: CogniteClient, data: dict) -> str:
         transform_timeseries = RunTransformations(PrepTS.data, df_in)
         df_out = transform_timeseries(eval(calculation))
 
-        # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
+        # STEP 3: Ensure output is correctly formatted dataframe as required by template
+        assert_df(df_out, ts_in, ts_out)
+
+        # STEP 4: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
         df_out = transform_timeseries.store_output_ts(df_out)
         client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return PrepTS.data["ts_input_backfill"]
+    return df_out.to_json()
+
+def assert_df(df_out, ts_in, ts_out):
+    """Check requirements that needs to be satisfied for
+    the output dataframe from the calculation.
+
+    Args:
+        df_out (pd.DataFrame): output dataframe of calculation
+        ts_in (list): names of input time series
+        ts_out (list): names of output time series
+    """
+    assert isinstance(df_out, pd.DataFrame), f"Output of calculation must be a Dataframe"
+    assert type(df_out.index) == pd.DatetimeIndex, f"Dataframe index must be of type DatetimeIndex, not {type(df_out.index)}."
+    if len(ts_in.keys()) > len(ts_out.keys()): # If one time series calculated from multiple inputs
+        assert (list(df_out.columns) == list(ts_out.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to output names, {list(ts_out.keys())}, specified in data dictionary"
+    else: # If each time series input corresponds to one time series output
+        assert (list(df_out.columns) == list(ts_in.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to input names, {list(ts_in.keys())}, specified in data dictionary"
+
 '''
 
 def write_transformation():
     return '''
+import os
+import sys
+# Set file to system path to allow relative import from parent folder
+parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_path not in sys.path:
+    sys.path.append(parent_path)
+
+from utilities import AGG_PERIOD
 import pandas as pd
 
-def main_A(data, ts_inputs):
+def main_aggregate(data, ts_inputs):
+    """Sample main function for performing aggregations (here: average drainage).
+
+    Args:
+        data (dict): parameters for Cognite Function
+        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
+
+    Returns:
+        (pd.DataFrame): transformed time series, one column per time series
+    """
+    import numpy as np
+
+    try:
+        aggregate = data["optional"]["aggregate"]
+    except:
+        raise KeyError(f"Aggregated calculations require 'aggregate' to be specified as an optional parameter to input data dictionary. Only found the optional parameters: {data['optional'].keys()}")
+
+    out_index = ts_inputs.index.floor(AGG_PERIOD[aggregate["period"]]).unique()
+
+    calc_params = data["calc_params"]
+    ts_out = filter_ts(ts_inputs, calc_params)
+
+    derivative_value_excl = calc_params['derivative_value_excl']
+    output_cols = [col for col in ts_inputs.columns if col != "time_sec"]
+    df_out = pd.DataFrame(index=out_index, columns=output_cols)
+
+    for ts in output_cols:
+        try:
+            ts_out[ts+"_derivative"] = np.gradient(ts_out[ts], ts_out["time_sec"])
+        except:
+            raise IndexError(
+                f"No datapoints found for selected date range for time series {ts}. Cannot compute drainage rate.")
+
+        ts_out[ts+"_drainage"] = ts_out[ts+"_derivative"].apply(
+            lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
+
+        df_out[ts] = ts_out.resample(AGG_PERIOD[aggregate["period"]])[ts+"_drainage"].agg(aggregate["type"]).values
+
+    return df_out
+
+def filter_ts(ts_inputs, data):
+    """Helper function: performs lowess smoothing
+
+    Args:
+        ts (pd.DataFrame): input time series
+        data (dict): calculation-specific parameters for Cognite Function
+
+    Returns:
+        pd.DataFrame: smoothed signal
+    """
+    from datetime import datetime, timezone
+    from statsmodels.nonparametric.smoothers_lowess import lowess
+
+    df_smooth = pd.DataFrame()
+    ts_inputs["time_sec"] = (ts_inputs.index - datetime(1970, 1, 1,
+                                                        tzinfo=timezone.utc)).total_seconds()
+
+    if "lowess_frac" in data:
+        frac = data["lowess_frac"]
+    else:
+        frac = 0.01
+    if "lowess_delta" in data:
+        delta = data["lowess_delta"]
+    else:
+        delta = 0
+
+    ts_input_names = [name for name in ts_inputs.columns if name != "time_sec"]
+    for ts in ts_input_names:
+        data = ts_inputs[ts]
+
+        smooth = lowess(data, ts_inputs["time_sec"], is_sorted=True,
+                        frac=frac, it=0, delta=delta*len(data))
+
+        df_smooth[ts] = smooth[:,1] # only extract values, not timestamp
+
+    df_smooth["time_sec"] = smooth[:,0]
+    df_smooth.index = pd.to_datetime(df_smooth["time_sec"], unit="s")
+
+    return df_smooth
+
+def main_test(data, ts_inputs):
     """Sample main function for transforming a set of input timeseries to
     produce a set of associated output time series.
 
@@ -176,86 +273,6 @@ def main_B(data, ts_inputs):
     ts_out = ts_0.max() + 2*ts_1 + ts_0*ts_2/5
 
     return pd.DataFrame(ts_out) # ensure output given as dataframe
-
-def main_aggregate(data, ts_inputs):
-    """Sample main function for performing aggregations.
-
-    Args:
-        data (dict): parameters for Cognite Function
-        ts_inputs (pd.DataFrame): input time series to transform, one column per time series
-
-    Returns:
-        (pd.DataFrame): transformed time series, one column per time series
-    """
-    import numpy as np
-
-    aggregate = data["aggregate"]
-    df_out = pd.DataFrame(index=ts_inputs.index)
-    calc_params = data["calc_params"]
-
-    ts_out = filter_ts(ts_inputs, calc_params)
-
-    derivative_value_excl = calc_params['derivative_value_excl']
-    agg_period = {"second":"S", "minute":"T", "hour":"H", "day":"D", "month":"M", "year":"Y"}
-
-    for ts in ts_inputs.columns:
-        try:
-            ts_out[ts+"_derivative"] = np.gradient(ts_out[ts], ts_out["time_sec"])
-        except:
-            raise IndexError(
-                f"No datapoints found for selected date range for time series {ts}. Cannot compute drainage rate.")
-
-        ts_out[ts+"_drainage"] = ts_out[ts+"_derivative"].apply(
-            lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
-
-        if "period" in aggregate and "type" in aggregate:
-            df_out[ts] = ts_out.resample(agg_period[aggregate["period"]])[ts+"_drainage"].agg(aggregate["type"])
-        else:
-            df_out[ts] = ts_inputs[ts] # if no aggregates, make no transformations
-
-    # CF requires dataframe to only have transformed time series as columns. Delete others.
-    df_out = df_out.drop("time_sec", axis=1)
-
-    return df_out
-
-def filter_ts(ts_inputs, data):
-    """Helper function: performs lowess smoothing
-
-    Args:
-        ts (pd.DataFrame): input time series
-        data (dict): calculation-specific parameters for Cognite Function
-
-    Returns:
-        pd.DataFrame: smoothed signal
-    """
-    from datetime import datetime
-    from statsmodels.nonparametric.smoothers_lowess import lowess
-
-    df_smooth = pd.DataFrame()
-    ts_inputs["time_sec"] = (ts_inputs.index - datetime(1970, 1, 1)).total_seconds()
-
-    if "lowess_frac" in data:
-        frac = data["lowess_frac"]
-    else:
-        frac = 0.01
-    if "lowess_delta" in data:
-        delta = data["lowess_delta"]
-    else:
-        delta = 0
-
-    ts_input_names = [name for name in ts_inputs.columns if name != "time_sec"]
-    for ts in ts_input_names:
-        data = ts_inputs[ts]
-
-        smooth = lowess(data, ts_inputs["time_sec"], is_sorted=True,
-                        frac=frac, it=0, delta=delta*len(data))
-
-        df_smooth[ts] = smooth[:,1] # only extract values, not timestamp
-
-    df_smooth["time_sec"] = smooth[:,0]
-    df_smooth.index = pd.to_datetime(df_smooth["time_sec"], unit="s")
-
-    return df_smooth
 '''
 
 def run_poetry_command(command: str):

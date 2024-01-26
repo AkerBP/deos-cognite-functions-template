@@ -30,6 +30,7 @@ def handle(client: CogniteClient, data: dict) -> str:
     PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
 
     ts_in = PrepTS.data["ts_input_data"]
+    ts_out = PrepTS.data["ts_output"]
     all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
 
     if not all_inputs_empty: # can't run calculations if any time series is empty for defined interval
@@ -39,13 +40,17 @@ def handle(client: CogniteClient, data: dict) -> str:
         # STEP 2: Run transformations
         transform_timeseries = RunTransformations(PrepTS.data, df_in)
         df_out = transform_timeseries(eval(calculation))
+        # Ensure output is correctly formatted dataframe as required by template
+        assert isinstance(df_out, pd.DataFrame), f"Output of calculation must be a Dataframe"
+        assert type(df_out.index) == pd.DatetimeIndex, f"Dataframe index must be of type DatetimeIndex, not {type(df_out.index)}."
+        assert (list(df_out.columns) == list(ts_in.keys()))                 | (list(df_out.columns) == list(ts_out.keys())), f"df_out {list(df_out.columns)} not equal to ts_in {list(ts_in.keys())}"
 
         # STEP 3: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
         df_out = transform_timeseries.store_output_ts(df_out)
         client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
-    return PrepTS.data["ts_input_backfill"]
+    return df_out.to_json() # PrepTS.data["ts_input_backfill"]
 
 if __name__ == "__main__":
     from initialize import initialize_client
@@ -58,34 +63,41 @@ if __name__ == "__main__":
     client = initialize_client(cdf_env, path_to_env="../../authentication-ids.env")
     load_dotenv("../../handler-data.env")
 
-    # ts_input_names = ["VAL_17-FI-9101-286:VALUE", "VAL_17-PI-95709-258:VALUE", "VAL_11-PT-92363B:X.Value", "VAL_11-XT-95067B:Z.X.Value"] # Inputs to IdealPowerConsumption function # ["VAL_11-XT-95067B:Z.X.Value", 87.8, "CF_IdealPowerConsumption"] # Inputs to WasterEnergy function
     ts_input_names = ["VAL_11-LT-95107A:X.Value"]
-    # ts_output_names = ["CF_IdealPowerConsumption"]
-    ts_output = {"names": ["hourly_avg_drainage_description_unit"],
-                "description": ["Hourly average drainage from pump"], #["Daily average drainage from pump"]
-                "unit": ["m3/min"]} #["m3/min"]
+    ts_output = {"names": ["hourly_avg_drainage_test"],
+                "description": [None], #["Daily average drainage from pump"]
+                "unit": [None]} #["m3/min"]
 
     function_name = "hourly-avg-drainage"
     calculation_function = "aggregate"
-    schedule_name = ts_input_names[0]
+    schedule_name = "ipc"#ts_input_names[0]
 
-    aggregate = {}
-    aggregate["period"] = "hour"
-    aggregate["type"] = "mean"
-
-    sampling_rate = 60 #
-    cron_interval_min = str(15) #
+    sampling_rate = "1m" #
+    cron_interval_min = str(59) #
     assert int(cron_interval_min) < 60 and int(cron_interval_min) >= 1
     backfill_period = 3
-    backfill_hour = 15 # 23
+    backfill_hour = 23 # 23
     backfill_min_start = 30
-
-    tank_volume = 240
-    derivative_value_excl = 0.002
-    lowess_frac = 0.001
-    lowess_delta = 0.01
-
     backfill_min_start = min(59, backfill_min_start)
+
+    optional = {
+        "historic_start_time": {
+            "year": 2023,
+            "month": 1,
+            "day": 1
+        },
+        "aggregate": {
+            "period": "day",
+            "type": "mean"
+        }
+    }
+
+    calc_params = {
+        "tank_volume": 240,
+        "derivative_value_excl": 0.002,
+        "lowess_frac": 0.001,
+        "lowess_delta": 0.01,
+    }
 
     data_dict = {'ts_input_names':ts_input_names,
             'ts_output':ts_output,
@@ -95,15 +107,13 @@ if __name__ == "__main__":
             'granularity': sampling_rate,
             'dataset_id': 1832663593546318, # Center of Excellence - Analytics dataset
             'cron_interval_min': cron_interval_min,
-            'aggregate': aggregate,
             'testing': False,
             'backfill_period': backfill_period, # days by default (if not doing aggregates)
             'backfill_hour': backfill_hour, # 23: backfilling to be scheduled at last hour of day as default
             'backfill_min_start': backfill_min_start, 'backfill_min_end': min(59.9, backfill_min_start + int(cron_interval_min)),
-            'calc_params': {
-                'derivative_value_excl':derivative_value_excl, 'tank_volume':tank_volume,
-                'lowess_frac': lowess_frac, 'lowess_delta': lowess_delta, #'aggregate_period': aggregate["period"]
-            }}
+            'optional': optional,
+            'calc_params': calc_params
+            }
 
     # deploy_cognite_functions(data_dict=data_dict, client=client, single_call=False, scheduled_call=False)
     handle(client, data_dict)

@@ -1,10 +1,12 @@
 
  
-pytest 
-pandas 
-python-dotenv 
 ipykernel 
-cognite-sdk 
+pandas 
 numpy 
+openpyxl 
+pytest 
+python-dotenv 
+pyarrow 
+cognite-sdk 
 
 

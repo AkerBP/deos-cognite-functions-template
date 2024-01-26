@@ -7,12 +7,14 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pytest = "^7.4.4"
-pandas = "^2.1.4"
-python-dotenv = "^1.0.0"
-ipykernel = "^6.28.0"
-cognite-sdk = "^7.13.0"
+ipykernel = "^6.29.0"
+pandas = "^2.2.0"
 numpy = "^1.26.3"
+openpyxl = "^3.1.2"
+pytest = "^7.4.4"
+python-dotenv = "^1.0.1"
+pyarrow = "^15.0.0"
+cognite-sdk = "^7.15.1"
 
 
 [build-system]
