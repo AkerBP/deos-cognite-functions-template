@@ -8,6 +8,8 @@ from cognite.client._cognite_client import CogniteClient
 from cognite.client.data_classes import functions
 from cognite.client.data_classes import ClientCredentials
 
+from utilities import dataset_abbreviation
+
 from dotenv import load_dotenv
 load_dotenv("../authentication-ids.env")
 
@@ -34,7 +36,8 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
         zip_name = "zip_handle.zip"
         zip_path = f"{folder_cf}/{zip_name}"
 
-        if data_dict["function_name"] == "cf_test": # for unit testing
+        dataset_abbr = dataset_abbreviation(client, data_dict["optional"], data_dict["dataset_id"])
+        if data_dict["function_name"] == f"{dataset_abbr}_test": # for unit testing
             parent = "/.."
         else:
             parent = ""
@@ -46,9 +49,9 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
                 zipf.write(f'{folder_cf}/handler.py', arcname='handler.py')
                 zipf.write(f'{folder_cf}/transformation.py', arcname='transformation.py')
                 zipf.write(f'{folder_cf}{parent}/../transformation_utils.py', arcname='transformation_utils.py')
+                zipf.write(f'{folder_cf}{parent}/../utilities.py', arcname='utilities.py')
             except:
-                print(folder_cf)
-                raise FileNotFoundError("Make sure you have the following three required files in your Cognite Function folder:\n" \
+                raise FileNotFoundError(f"Make sure you have the following three required files in your Cognite Function folder {folder_cf}:\n" \
                                             "\trequirements.txt\n" \
                                             "\thandler.py\n" \
                                             "\ttransformation.py")
@@ -100,33 +103,3 @@ def deploy_cognite_functions(data_dict: dict, client: CogniteClient,
             data=data_dict,
         )
         print("... Done")
-
-def list_scheduled_calls(data_dict: dict, client: CogniteClient) -> Tuple[int, pd.DataFrame]:
-    """List all scheduled calls to Cognite Function
-
-    Args:
-        data_dict (dict): Dictionary with input data and parameters for the Cognite Function
-        client (CogniteClient): client to authenticate with Cognite
-
-    Returns:
-        my_schedule_id (int): id of deployed schedule
-        all_calls (pd.DataFrame): table of all calls made
-    """
-    import time
-    my_func = client.functions.retrieve(external_id=data_dict["function_name"])
-    try:
-        my_schedule_id = client.functions.schedules.list(
-                name=data_dict["function_name"]).to_pandas().id[0]
-    except:
-        raise NotImplementedError(f"No schedule for function {data_dict['function_name']} exists.")
-
-    all_calls = my_func.list_calls(
-                schedule_id=my_schedule_id, limit=-1).to_pandas()
-
-    while all_calls.empty: # wait for first call
-        time.sleep(1)
-        all_calls = my_func.list_calls(
-                schedule_id=my_schedule_id, limit=-1).to_pandas()
-    print(f"Latest call for Cognite Function '{my_func.name}':\n{all_calls.iloc[0]}")
-
-    return my_schedule_id, all_calls

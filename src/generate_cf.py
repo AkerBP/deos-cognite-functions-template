@@ -3,9 +3,10 @@ import re
 import shutil
 import subprocess
 
-def generate_cf(cf_name: str, add_packages: list = []):
+def generate_cf(data: dict, add_packages: list = []):
     cwd = os.getcwd().replace("\\", "/")
-    cf_path = cwd+"/cf_"+cf_name
+    cf_name = data["function_name"]
+    cf_path = cwd+"/"+cf_name
 
     # Make mandatory files
     if not os.path.exists(cf_path):
@@ -118,31 +119,25 @@ def handle(client: CogniteClient, data: dict) -> str:
         df_out = transform_timeseries(eval(calculation))
 
         # STEP 3: Ensure output is correctly formatted dataframe as required by template
-        assert_df(df_out, ts_in, ts_out)
+        assert_df(df_out, ts_out)
 
-        # STEP 4: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
-        df_out = transform_timeseries.store_output_ts(df_out)
+        # STEP 4: Insert transformed signal for new time range (done simultaneously for multiple time series outputs)
         client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
     return df_out.to_json()
 
-def assert_df(df_out, ts_in, ts_out):
+def assert_df(df_out, ts_out):
     """Check requirements that needs to be satisfied for
     the output dataframe from the calculation.
 
     Args:
         df_out (pd.DataFrame): output dataframe of calculation
-        ts_in (list): names of input time series
         ts_out (list): names of output time series
     """
     assert isinstance(df_out, pd.DataFrame), f"Output of calculation must be a Dataframe"
     assert type(df_out.index) == pd.DatetimeIndex, f"Dataframe index must be of type DatetimeIndex, not {type(df_out.index)}."
-    if len(ts_in.keys()) > len(ts_out.keys()): # If one time series calculated from multiple inputs
-        assert (list(df_out.columns) == list(ts_out.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to output names, {list(ts_out.keys())}, specified in data dictionary"
-    else: # If each time series input corresponds to one time series output
-        assert (list(df_out.columns) == list(ts_in.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to input names, {list(ts_in.keys())}, specified in data dictionary"
-
+    assert (list(df_out.columns) == list(ts_out.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to output names, {list(ts_out.keys())}, specified in data dictionary"
 '''
 
 def write_transformation():
@@ -180,20 +175,24 @@ def main_aggregate(data, ts_inputs):
     ts_out = filter_ts(ts_inputs, calc_params)
 
     derivative_value_excl = calc_params['derivative_value_excl']
-    output_cols = [col for col in ts_inputs.columns if col != "time_sec"]
+
+    input_cols = list([col for col in ts_inputs.columns if col != "time_sec"])
+    output_cols = list([col for col in data["ts_output"].keys() if col != "time_sec"])
+
     df_out = pd.DataFrame(index=out_index, columns=output_cols)
 
-    for ts in output_cols:
+    for in_col, out_col in zip(input_cols, output_cols):
+
         try:
-            ts_out[ts+"_derivative"] = np.gradient(ts_out[ts], ts_out["time_sec"])
+            ts_out[in_col+"_derivative"] = np.gradient(ts_out[in_col], ts_out["time_sec"])
         except:
             raise IndexError(
-                f"No datapoints found for selected date range for time series {ts}. Cannot compute drainage rate.")
+                f"No datapoints found for selected date range for time series {in_col}. Cannot compute drainage rate.")
 
-        ts_out[ts+"_drainage"] = ts_out[ts+"_derivative"].apply(
+        ts_out[in_col+"_drainage"] = ts_out[in_col+"_derivative"].apply(
             lambda x: 0 if x > derivative_value_excl or pd.isna(x) else x)  # not interested in large INLET fluxes
 
-        df_out[ts] = ts_out.resample(AGG_PERIOD[aggregate["period"]])[ts+"_drainage"].agg(aggregate["type"]).values
+        df_out[out_col] = ts_out.resample(AGG_PERIOD[aggregate["period"]])[in_col+"_drainage"].agg(aggregate["type"]).values
 
     return df_out
 
