@@ -87,14 +87,14 @@ The `src` folder is organized as follows.
 │   │   ├── poetry.lock
 │   │   ├── pyproject.toml
 │   │   ├── zip_handle.zip
-│   ├── *ds_A*_*func_X*
+│   ├── *dsA*_*func-X*
 │   │   ├── requirements.txt
 │   │   ├── handler.py
 │   │   ├── transformation.py
 │   │   ├── poetry.lock
 │   │   ├── pyproject.toml
 │   │   ├── zip_handle.zip
-│   ├── *dataset_B*_*func_Y*
+│   ├── *dsB*_*func-Y*
 │   ├── handler_utils.py
 │   ├── transformation_utils.py
 │   ├── initialize.py
@@ -105,7 +105,7 @@ The `src` folder is organized as follows.
 ```
 Here we find a script `initialize.py` for authenticating with Cognite, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, an interactive script `run_functions.ipynb` to actually deploy a Cognite Function, and utility scripts `utilities.py`, `handler_utils.py` and `transformation_utils.py`, where the two latter implement the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Function scheduling. 
 
-The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`.
+The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`. For example, `CoEA_avg-drainage` is a Cognite Function for calculating average drainage rate, written to the Center of Excellence - Analytics dataset. Each Cognite Function subfolder contains the following files:
 - **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`. Regardless of Cognite Function, the `handle` function reads
 ```
 def handle(client: CogniteClient, data: dict) -> str:
