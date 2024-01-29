@@ -144,7 +144,7 @@ def handle(client: CogniteClient, data: dict) -> str:
   - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
 
   The main function should follow the naming convention `main_*calc_name*`, where *calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `main_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `main_`.
-- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
+- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function. This is automatically generated when creating an instance of your Cognite Function in `src/run_functions.ipynb` (where additional imported packages are specified in the `add_packages` parameter), but it is recommended to double-check the consistency of the file
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
