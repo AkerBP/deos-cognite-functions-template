@@ -142,6 +142,7 @@ def handle(client: CogniteClient, data: dict) -> str:
 - **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation (i.e., the one retrieved from `data["calculation_function"]` in the `handle` function) should return a `pandas.DataFrame` where each column corresponds to one of the time series outputs. The returned dataframe should follow these requirements:
   - must have a pandas datetime index representing the timestamp for each value
   - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
+
 The main function should follow the naming convention `main_*calc_name*`, where *calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `main_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `main_`.
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
