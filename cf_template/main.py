@@ -149,7 +149,7 @@ transformation.py
 def make_new_cf_structure(name: str) -> None:
     root_path = Path().cwd()
     function_path = root_path.joinpath(name)
-    template_path = Path(__file__).joinpath("template_dir")
+    template_path = Path(__file__).stem.joinpath("template_dir")
 
     if not function_path.exists():
         shutil.copytree(template_path, function_path)
