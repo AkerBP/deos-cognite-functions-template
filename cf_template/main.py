@@ -147,7 +147,7 @@ transformation.py
             return
 
 def make_new_cf_structure(name: str) -> None:
-    root_path = Path(__file__).absolute().parent
+    root_path = Path().cwd()
     function_path = root_path.joinpath(name)
     template_path = root_path.joinpath("template_dir")
 
