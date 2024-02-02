@@ -1,4 +1,5 @@
 import shutil
+import argparse
 import zipfile
 import time
 import os
@@ -8,10 +9,8 @@ import pandas as pd
 from pathlib import Path
 from cognite.client import CogniteClient
 from cognite.client.data_classes import ClientCredentials
-from initialize_cdf_client import initialize_cdf_client
+from cf_template.initialize_cdf_client import initialize_cdf_client
 from typing import Union
-
-from cli import cli
 
 
 class NewCogniteFunction:
@@ -148,28 +147,42 @@ transformation.py
             return
 
 def make_new_cf_structure(name: str) -> None:
-    root_path = Path().cwd().joinpath(name)
-    template_path = Path().absolute().joinpath("template_dir")
+    root_path = Path(__file__).absolute().parent
+    function_path = root_path.joinpath(name)
+    template_path = root_path.joinpath("template_dir")
 
-    if not root_path.exists():
-        shutil.copytree(template_path, root_path)
+    if not function_path.exists():
+        shutil.copytree(template_path, function_path)
     else:
         raise RuntimeError(f"Cognite Function directory '{name}' already exists!")
 
-    print(f"New Cognite Function Directory Created:")
+    print(f"New Cognite Function Directory Created:\n")
     tree = f"""{name}/
-├── Deployment.ipynb
-└── function
-├── handler.py
-├── requirements.txt
-└── transformation.py
+├── Deployment.ipynb          <-- Utility notebook for setting up the deployment
+└── function                  <-- The directory that will be uploaded to CDF
+    ├── handler.py            <-- Entry point to your code for Cognite Functions
+    ├── requirements.txt      <-- All runtime python dependencies go here
+    └── transformation.py     <-- Separate file where you define the transformation
 """
     print(tree)
     return
 
+def cli():
+    """"""
+    description = "Cognite Functions Template CLI"
 
-if __name__ == "__main__":
-    parser = cli()
+    epilog = """This CLI provides an entry point to the
+Cognite Functions Template.
+"""
+
+    parser = argparse.ArgumentParser(
+        description=description,
+        add_help=True,
+        epilog=epilog
+    )
+
+    parser.add_argument("-n", "--name", type=str, help="Name of the new cognite function project.")
+
     args = parser.parse_args()
 
     if " " in args.name:
@@ -177,4 +190,4 @@ if __name__ == "__main__":
     else:
         cf_name = args.name
 
-    cf = make_new_cf_structure(cf_name)
+    make_new_cf_structure(cf_name)
