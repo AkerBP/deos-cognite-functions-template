@@ -10,8 +10,8 @@ if parent_path not in sys.path:
     sys.path.append(parent_path)
 
 from cognite.client._cognite_client import CogniteClient
-from handler_utils import PrepareTimeSeries
-from transformation_utils import RunTransformations
+from prepare_timeseries import PrepareTimeSeries
+from transform_timeseries import RunTransformations
 from transformation import *
 
 def handle(client: CogniteClient, data: dict) -> str:
@@ -43,28 +43,22 @@ def handle(client: CogniteClient, data: dict) -> str:
         df_out = transform_timeseries(eval(calculation))
 
         # STEP 3: Ensure output is correctly formatted dataframe as required by template
-        assert_df(df_out, ts_in, ts_out)
+        assert_df(df_out, ts_out)
 
-        # STEP 4: Structure and insert transformed signal for new time range (done simultaneously for multiple time series outputs)
-        df_out = transform_timeseries.store_output_ts(df_out)
+        # STEP 4: Insert transformed signal for new time range (done simultaneously for multiple time series outputs)
         client.time_series.data.insert_dataframe(df_out)
 
     # Store original signal (for backfilling)
     return df_out.to_json()
 
-def assert_df(df_out, ts_in, ts_out):
+def assert_df(df_out, ts_out):
     """Check requirements that needs to be satisfied for
     the output dataframe from the calculation.
 
     Args:
         df_out (pd.DataFrame): output dataframe of calculation
-        ts_in (list): names of input time series
         ts_out (list): names of output time series
     """
     assert isinstance(df_out, pd.DataFrame), f"Output of calculation must be a Dataframe"
     assert type(df_out.index) == pd.DatetimeIndex, f"Dataframe index must be of type DatetimeIndex, not {type(df_out.index)}."
-    if len(ts_in.keys()) > len(ts_out.keys()): # If one time series calculated from multiple inputs
-        assert (list(df_out.columns) == list(ts_out.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to output names, {list(ts_out.keys())}, specified in data dictionary"
-    else: # If each time series input corresponds to one time series output
-        assert (list(df_out.columns) == list(ts_in.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to input names, {list(ts_in.keys())}, specified in data dictionary"
-
+    assert (list(df_out.columns) == list(ts_out.keys())), f"Dataframe columns for calculated time series, {list(df_out.columns)}, not equal to output names, {list(ts_out.keys())}, specified in data dictionary"

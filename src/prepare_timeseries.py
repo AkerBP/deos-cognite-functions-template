@@ -20,12 +20,10 @@ from cognite.client.exceptions import CogniteAPIError
 
 logger = logging.getLogger(__name__)
 
-from transformation_utils import RunTransformations
+from transform_timeseries import RunTransformations
 from utilities import dataframe_to_bytes, get_external_id_from_name
 from utilities import AGG_PERIOD
 
-class FunctionDeployError(Exception):
-    pass
 
 class PrepareTimeSeries:
     """Class to organize input time series and prepare output time series

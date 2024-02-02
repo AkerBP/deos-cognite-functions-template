@@ -14,7 +14,7 @@ import numpy as np
 # from cognite.client.credentials import OAuthInteractive, OAuthClientCredentials
 from cognite.client.data_classes import TimeSeries
 
-from initialize import initialize_client
+from initialize_cdf_client import initialize_client
 from cf_test.handler import handle
 from tests.utils import create_timeseries, lowess_smoothing, make_dummy_df
 

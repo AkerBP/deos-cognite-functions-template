@@ -16,7 +16,9 @@ pytest = "^7.4.3"
 openpyxl = "^3.1.2"
 pyarrow = "^15.0.0"
 
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[project.scripts]
+new-cf-template = "cf-template.access_point:new_cf_template"

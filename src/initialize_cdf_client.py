@@ -6,7 +6,7 @@ from cognite.client.credentials import OAuthInteractive, OAuthClientCredentials
 from dotenv import load_dotenv
 
 
-def initialize_client(cdf_env: str, path_to_env: str = None):
+def initialize_cdf_client(cdf_env: str, path_to_env: str = None):
     """Initialize Cognite client for provided project
 
     Args:
