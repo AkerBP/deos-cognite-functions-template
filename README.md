@@ -109,9 +109,17 @@ The `src` folder is organized as follows.
 │   ├── utilities.py
 │   └── run_functions.ipynb
 ```
-Here we find a script `initialize.py` for authenticating with Cognite, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, an interactive script `run_functions.ipynb` to actually deploy a Cognite Function, and utility scripts `utilities.py`, `handler_utils.py` and `transformation_utils.py`, where the two latter implement the classes `PrepareTimeSeries` and `RunTransformations` with necessary functionality to transform time series through Cognite Function scheduling. 
+Here we find a script `initialize.py` for authenticating with Cognite, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, and an interactive script `run_functions.ipynb` for actual deployment of the Cognite Function. There are two main classes of the template:
 
-The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`. For example, `CoEA_avg-drainage` is a Cognite Function for calculating average drainage rate, written to the Center of Excellence - Analytics dataset. Each Cognite Function subfolder contains the following files:
+**`PrepareTimeseries`** (in `prepare_ts.py`)
+- Prepares one or a set of time series for transformation by retrieving and aligning input signals over a populated datetime range, handling NaNs, support for aggregations and backfilling
+- Time series are collectively retrieved, structured and backfilled by the method `get_orig_timeseries`, importing functionality from other methods in the same class
+- Transformed time series are eventually written to a devoted time series object in CDF
+
+**`RunTransformation`** (in `run_transformation.py`)
+- Class that takes an organized dataframe of time series inputs (as prepared by `PrepareTimeseries`) and transforms the signals acording to the transformation defined in `transformation.py`
+
+The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`. For example, `CoEA_avg-drainage` is a Cognite Function for calculating average drainage rate, written to the Center of Excellence - Analytics (CoEA) dataset. Each Cognite Function subfolder contains the following files:
 - **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`. Regardless of Cognite Function, the `handle` function reads
 ```
 def handle(client: CogniteClient, data: dict) -> str:
@@ -139,12 +147,12 @@ def handle(client: CogniteClient, data: dict) -> str:
     return df_out.to_json()
 ```
   where the ***only modification required is a programmatic setup of your calculation in the `calculation` function*** (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_inputs` of time series inputs. A function `assert_df` is dedicated to check that what the `calculation` function returns is in compliance with the requirements of the template. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
-- **`transformation.py`**: script defining the calculation(s) to transform the input time series. The main function running a calculation (i.e., the one retrieved from `data["calculation_function"]` in the `handle` function) should return a `pandas.DataFrame` where each column corresponds to one of the time series outputs. The returned dataframe should follow these requirements:
+- **`transformation.py`**: script defining the `main_transformation` to transform the input time series. This should return a `pandas.DataFrame` where each column corresponds to one of the time series outputs. The returned dataframe should follow these requirements:
   - must have a pandas datetime index representing the timestamp for each value
   - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
 
-  The main function should follow the naming convention `main_*calc_name*`, where *calc_name* is a descriptive name of the calculation function, while utility functions for the main function should **not** have the prefix `main_`. The script may include multiple different (main) calculation functions, as long they are named differently and defined with the prefix `main_`.
-- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function. This is automatically generated when creating an instance of your Cognite Function in `src/run_functions.ipynb` (where additional imported packages are specified in the `add_packages` parameter), but it is recommended to double-check the consistency of the file
+  The script may import utility functions from other .py files located in the same folder.
+- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function. This is automatically generated when creating an instance of your Cognite Function in `Deploy.ipynb`, specifying required packages for running *any* Cognite Function. If additional packages are used in `transformation.py`, the file needs to be modified to reflect the dependencies of these packages
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
 *A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
