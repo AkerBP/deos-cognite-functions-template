@@ -120,7 +120,8 @@ Here we find a script `initialize.py` for authenticating with Cognite, a script 
 - Class that takes an organized dataframe of time series inputs (as prepared by `PrepareTimeseries`) and transforms the signals acording to the transformation defined in `transformation.py`
 
 The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`. For example, `CoEA_avg-drainage` is a Cognite Function for calculating average drainage rate, written to the Center of Excellence - Analytics (CoEA) dataset. Each Cognite Function subfolder contains the following files:
-- **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. A class `PrepareTimeSeries` prepares the input and output time series, while the actual transformations are devoted to a class `RunTransformations`. Regardless of Cognite Function, the `handle` function reads
+- **`Deploy.ipynb`**: interactive script for deploying the Cognite Function to run on a schedule
+- **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. Regardless of Cognite Function, the `handle` function reads
 ```
 def handle(client: CogniteClient, data: dict) -> str:
     calculation = data["calculation_function"]
@@ -155,7 +156,7 @@ def handle(client: CogniteClient, data: dict) -> str:
 - **`requirements.txt`**: file containing Python package requirements to run the Cognite Function. This is automatically generated when creating an instance of your Cognite Function in `Deploy.ipynb`, specifying required packages for running *any* Cognite Function. If additional packages are used in `transformation.py`, the file needs to be modified to reflect the dependencies of these packages
 - **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
-*A client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login. This requirement is not yet specified in the documentation from Cognite. The request of improving the documentation of Cognite Functions has been sent to the CDF team to hopefully resolve any confusions regarding deployment.*
+*To preserve deployed schedules beyond current session, a client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login.*
 
 ### 1. Generate Cognite Function folder structure
 The first step to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. 
