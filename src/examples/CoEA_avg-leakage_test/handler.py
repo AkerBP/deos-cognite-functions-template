@@ -10,8 +10,8 @@ if parent_path not in sys.path:
     sys.path.append(parent_path)
 
 from cognite.client._cognite_client import CogniteClient
-from handler_utils import PrepareTimeSeries
-from transformation_utils import RunTransformations
+from prepare_timeseries import PrepareTimeSeries
+from run_transformation import RunTransformations
 from transformation import *
 
 def handle(client: CogniteClient, data: dict) -> str:

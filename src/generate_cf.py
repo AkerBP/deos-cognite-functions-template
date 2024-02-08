@@ -101,7 +101,8 @@ def handle(client: CogniteClient, data: dict) -> str:
     Returns:
         str: jsonified data from input signals spanning backfilling period
     """
-    calculation = data["calculation_function"]
+    calculation = "main_transformation"
+    #calculation = data["calculation_function"]
     # STEP 1: Load (and backfill) and organize input time series'
     PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output"], client, data)
     PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))

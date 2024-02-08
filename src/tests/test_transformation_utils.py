@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import ast
-from handler_utils import PrepareTimeSeries, RunTransformations
+from prepare_timeseries import PrepareTimeSeries, RunTransformations
 from initialize import initialize_client
 
 @pytest.fixture
