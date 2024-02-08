@@ -328,7 +328,7 @@ xlwings==0.29.1
 xxhash==2.0.2
 xyzservices==2022.9.0
 y-py==0.5.9
-yapf==0.31.0
+yapf==0.40.2
 yarl==1.8.1
 ypy-websocket==0.8.2
 zict==2.2.0
