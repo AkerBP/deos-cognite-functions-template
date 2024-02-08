@@ -1,0 +1,12 @@
+
+ 
+cognite-sdk 
+pyarrow 
+python-dotenv 
+openpyxl 
+numpy 
+indsl = {version ,  }
+ipykernel 
+pytest 
+
+
