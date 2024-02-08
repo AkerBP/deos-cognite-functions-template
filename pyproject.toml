@@ -21,4 +21,5 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-make-new-cf = "cf_template.main:cli"
+new-cf = "cf_template.main:cli"
+

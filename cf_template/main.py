@@ -32,8 +32,8 @@ class NewCogniteFunction:
         backfill_hour: int=12,
         backfill_min_start: int=0,
         historic_start_time: str="2023-1-1 00:00",
-        deployment_single_call: bool=True,
-        deployment_scheduled_call: bool=False
+        deployment_single_call: bool=False,
+        deployment_scheduled_call: bool=True
     ) -> None:
         self.cdf_env = cdf_env
         self.client = client if client is not None else initialize_cdf_client(self.cdf_env)
@@ -170,11 +170,9 @@ def make_new_cf_structure(name: str) -> None:
 def cli():
     """"""
     description = "Cognite Functions Template CLI"
-
     epilog = """This CLI provides an entry point to the
 Cognite Functions Template.
 """
-
     parser = argparse.ArgumentParser(
         description=description,
         add_help=True,
