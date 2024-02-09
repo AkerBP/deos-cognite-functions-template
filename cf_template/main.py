@@ -20,14 +20,16 @@ class NewCogniteFunction:
         client: CogniteClient=None,
         description: str="",
         input_ts_names: list=None,
-        input_ts_sampling_rate: str="1h",
-        output_ts_names: dict=None,
+        input_ts_sampling_rate: str="1m",
+        output_ts_names: list=None,
+        output_ts_descriptions: list=None,
+        output_ts_units: list=None,
         output_ts_agg_method: Union[None, str]=None,
         output_ts_agg_freq: Union[None, str]=None,
         dataset_id: Union[str, int]=None,
         name_of_function: Union[None, str]=None,
         name_of_schedule: str=None,
-        cron_interval_in_minutes: str="60",
+        cron_interval_in_minutes: str="15",
         backfill_period: int=7,
         backfill_hour: int=12,
         backfill_min_start: int=0,
@@ -41,6 +43,11 @@ class NewCogniteFunction:
         self.input_ts_names = input_ts_names
         self.input_ts_sampling_rate = input_ts_sampling_rate
         self.output_ts_names = output_ts_names
+        self.output_ts_descriptions = output_ts_descriptions
+        self.output_ts_units = output_ts_units
+        self.ts_output = {"names": self.output_ts_names,
+                          "descriptions": self.output_ts_descriptions,
+                          "units": self.output_ts_units}
         self.output_ts_agg_method=output_ts_agg_method
         self.output_ts_agg_freq = output_ts_agg_freq
         self.dataset_id = dataset_id
@@ -124,10 +131,10 @@ transformation.py
         if self.deployment_scheduled_call:
             print("Preparing schedule to start sharp at next minute...", end="\r")
 
-            now = pd.Timestamp.now(tz="CET").floow("1s").tz_convert("UTC")
+            now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
             while now.second > 0:
                 time.sleep(1)
-                now = pd.Timestamp.now(tz="CET").floow("1s").tz_convert("UTC")
+                now = pd.Timestamp.now(tz="CET").floor("1s").tz_convert("UTC")
 
             print(f"Setting up Cognite Function at time {now}...", end="\r")
 
