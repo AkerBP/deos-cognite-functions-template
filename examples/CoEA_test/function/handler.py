@@ -78,7 +78,7 @@ if __name__ == "__main__":
                 "unit": []} #["m3/min"]
     dataset_id = 1832663593546318
 
-    function_name = "wasted-energy"
+    function_name = "CoEA_test"
     schedule_name = "test_schedule_name"#ts_input_names[0]
 
     data_dict = {'ts_input_names':ts_input_names,
