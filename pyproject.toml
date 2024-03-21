@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cf-template"
+name = "time-series-calculation"
 version = "0.1.0"
 description = ""
 authors = ["vetlenev <vetle.nevland@akerbp.com>"]
@@ -20,7 +20,4 @@ sphinx = "^7.2.6"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-new-cf = "cf_template.main:cli"
 
