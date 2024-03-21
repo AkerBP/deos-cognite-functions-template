@@ -50,32 +50,10 @@ and select `.venv` as kernel in the interactive script `src/run_functions.ipynb`
 The source code is located in the folder `time_series_calculation`.
 
 ```markdown
-├── src
-|   ├── README.md
-|   ├── __init__.py
-│   ├── CoEA_avg-drainage
-│   │   ├── requirements.txt
-│   │   ├── handler.py
-│   │   ├── transformation.py
-│   │   ├── poetry.lock
-│   │   ├── pyproject.toml
-│   │   ├── zip_handle.zip
-│   ├── *dsA*_*func-X*
-│   │   ├── requirements.txt
-│   │   ├── handler.py
-│   │   ├── transformation.py
-│   │   ├── poetry.lock
-│   │   ├── pyproject.toml
-│   │   ├── zip_handle.zip
-│   ├── *dsB*_*func-Y*
-│   │   ├── ...
-│   ├── handler_utils.py
-│   ├── transformation_utils.py
-│   ├── initialize.py
-│   ├── generate_cf.py
-│   ├── deploy_cognite_functions.py
-│   ├── utilities.py
-│   └── run_functions.ipynb
+├── time_series_backend
+|   ├── prepare_timeseries.py
+|   ├── transform_timeseries.py
+│   └── utilities.py
 ```
 Here we find a script `prepare_timeseries.py` that takes an input time series and preprocesses it to make it ready for calculation. It also handles backfilling. A script `transform_timeseries.py` is devoted for the actual transfoormation of the time series. Utility functions are found in `utilities.py`. There are two main classes of the template:
 
@@ -91,55 +69,6 @@ The only programmatic modification required by the end-user is setting up your c
   - must have a pandas datetime index representing the timestamp for each value
   - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
 If additional python packages are used in `transformation.py`, remember to include them in `requirements.txt`.
-
-
-## The deployment process
-This section details how the template is set up to deploy Cognite Functions.
-
-### 1. Generate Cognite Function folder structure
-The first step to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. 
-
-In addition to generating necessary scripts for deployment, `generate_cf.py` also sets up a dedicated Poetry environment for this function, including autogeneration of `requirements.txt`.  **NB: Internal consistency of `requirements.txt` is not guaranteed through this approach, so you may need to manually check for consistency in case of errors calling the Cognite Function.**
-### 2. Create file
-Next, we create a Cognite File to link with our Cognite Function. The file must point to a zip file `zip_handle.zip` in the subfolder `cf_*myname*` designated for the Cognite Function with name `myname`. The zip file contains the main entry `handler.py` with a function named `handle` inside it, and other necessary files to run `handler.py` (here: `requirements.txt`, `handler_utils.py` and `transformation.py`)
-```
-folder = os.getcwd().replace("\\", "/")
-folder_cf = folder + "/" + data_dict["function_name"]
-zip_name = "zip_handle.zip"
-
-uploaded = client.files.upload(path=f"{folder_cf}/{zip_name}", name=zip_name, data_set_id=dataset_id)
-```
-The Cognite File is associated with a dataset with id `dataset_id` and uploaded to CDF.
-### 3. Deployment
-The next step is to create an instance of the `handle` function (located in the subfolder `*ds*_*func*`) to be deployed to CDF. 
-```
-client.functions.create(
-    name=f"{data_dict['function_name']}",
-    external_id=f"{data_dict['function_name']}",
-    file_id=uploaded.id,
-)
-```
-The `file_id` is assigned the id of the newly created zip file.
-### 4. Set up schedule
-Once deployed, we set up a schedule for our function. For example, if we want out Cognite Function to run every 15 minute, this is specified by setting `data_dict["cron_interval_min"] = str(15)`. If the output time series does not exist, the first call will transform all historic data points. This will likely be a lot of data, and since Cognite Functions have a limited runtime of 10-15 minutes, you have two options if the Cognite Function is unable to perform the initial transformation:  
-- A.  Specify the start date for retrieving historic data through the optional argument "historic_start_time", which will overwrite the true historic start date of the data
-- B.  Perform initial transformation locally by running `handle(client, data)` with instantiated Cognite `client` and `data` dictionary *with same input parameters as used to set up schedule*
-
-The schedule is instantiated by
-```
-client.functions.schedules.create(
-    name=f"{data_dict['schedule_name']}",
-    cron_expression=f"*/{data_dict['cron_interval_min']} * * * *", # every cron_interval min
-    function_id=cognite_function.id,
-    client_credentials=ClientCredentials(client_id=str(os.getenv("CLIENT_ID")),
-                                         client_secret=str(os.getenv("CLIENT_SECRET"))),
-    description=f"Calculation scheduled every {data_dict['cron_interval_min']} minute",
-    data=data_dict,
-)
-```
-**Steps 2-4 above are collectively run by the function `deploy_cognite_functions.py`.**
-### 5. Repeat calculation for other time series'
-If you want to run the same calculation for another time series input, you simply create a new schedule for the same Cognite Function. To do so, in `run_functions.ipynb` modify `data_dict` with desired parameters (important to set a unique name of the schedule with the `schedule_name` key). Since the Cognite Function is already generated, you can skip running `generate_cf` and jump straight to running the initial transformation followed by setup of schedule by running `deploy_cognite_functions(data_dict, client, single_call=False, scheduled_call=True)`. You can also make a single call to the Cognite Function, without setting up a schedule, by running `deploy_cognite_functions(data_dict, client, single_call=True, scheduled_call=False)`.
 
 ## Testing
 The integrity and quality of the data product is tested using several approaches. The `tests` folder represents the testing framework applied in the CDF test environment, and contains the following
