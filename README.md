@@ -46,19 +46,6 @@ poetry install
 ```
 and select `.venv` as kernel in the interactive script `src/run_functions.ipynb`
 
-## Authentication with Python SDK.
-To read/write data from/to CDF, including Cognite Functions, you need to apply for read and write access to the relevant data resources. This is done by submitting a request using the following (form)[https://forms.office.com/Pages/ResponsePage.aspx?id=cEF-O0iDpEq_rgaj4YZ0aUVYsXTN0c9Dil0iHGZgj0lUOTBXVFlSWDlMUFk1WUNBS1lKWjZKWko2TyQlQCN0PWcu]. As a minimum to use this template, you need the following resource accesses: Functions:READ and Functions:WRITE.
-
-Once access has been granted, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using client credentials.
-- Create a user (or sign into your existing) account at [Cognite Hub](https://hub.cognite.com/). This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- **NB: To deploy Cognite Functions on schedules, interactive authentication using the `OAuthInteractive` provider does no work!** Instead, you need to authenticate using a `OAuthClientCredentials` with a personal client secret. Authentication is done in `initialize.py`. Five parameters must be specified:
-  1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (default: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
-  2. `CLIENT_ID`: ID of the application in Azure AD. This will be unique value available to users that have been granted write access to the dataset. It is found in your "Key vaults > *key_vault_name* > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) (reach out to the CDF team if you don't know the exact *key_vault_name*), where the relevant key has suffix ending "-ID"
-  3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
-  4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-  5. `CLIENT_SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) where the relevant key has suffix ending "-SECRET"
-The `TENANT_ID`, `CLIENT_ID` and `CLIENT_SECRET` must be defined in a file `authentication-ids.env` in the root folder of your project.
-
 ## Structure of project
 The source code is located in the folder `time_series_calculation`.
 
