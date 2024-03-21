@@ -47,40 +47,21 @@ poetry install
 and select `.venv` as kernel in the interactive script `src/run_functions.ipynb`
 
 ## Authentication with Python SDK.
-To read/write data from/to CDF, you need to apply for read and write access to the relevant data resources, and also to a designated dataset (or create a new dataset if not already existing). For a step-by-step procedure for how to aquire the accesses required to produce new time series data using our Cognite Functions template, please consult [this documentation](https://github.com/AkerBP-DataOps/deos-cognite-functions-template/blob/main/docs/dev/2%20-%20DataIntegrationArchitecture_Template.docx). To have more control of group permissions and accesses to your new dataset, we refer to [this template](https://github.com/eureka-x/AKERBP-AAD-SCRIPTS).
-Once access has been granted, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using app registration and the OIDC protocol. Authentication is performed by the `initialize_client` function in `src/initialize.py`
+To read/write data from/to CDF, including Cognite Functions, you need to apply for read and write access to the relevant data resources. This is done by submitting a request using the following (form)[https://forms.office.com/Pages/ResponsePage.aspx?id=cEF-O0iDpEq_rgaj4YZ0aUVYsXTN0c9Dil0iHGZgj0lUOTBXVFlSWDlMUFk1WUNBS1lKWjZKWko2TyQlQCN0PWcu]. As a minimum to use this template, you need the following resource accesses: Functions:READ and Functions:WRITE.
+
+Once access has been granted, we need to connect with the Cognite application. This section describes the process of authenticating with a Cognite client using client credentials.
 - Create a user (or sign into your existing) account at [Cognite Hub](https://hub.cognite.com/). This will connect you to an Azure Active Directory tenant that is used to authenticate with CDF, which gives you read access to the time series dataset used in this project. All Aker BP accounts and guest accounts have by default access to the development environment of CDF (Cognite Fusion Dev).
-- **NB: To deploy Cognite Functions on schedules, interactive authentication using the `OAuthInteractive` provider does no work!** Instead, you need to authenticate using a `OAuthClientCredentials` with a personal client secret. Authentication is done in `src/initialize.py`. Five parameters must be specified:
-  1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (here: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
+- **NB: To deploy Cognite Functions on schedules, interactive authentication using the `OAuthInteractive` provider does no work!** Instead, you need to authenticate using a `OAuthClientCredentials` with a personal client secret. Authentication is done in `initialize.py`. Five parameters must be specified:
+  1. `TENANT_ID`: ID of the Azure AD tenant where the user is signed in (default: `3b7e4170-8348-4aa4-bfae-06a3e1867469`)
   2. `CLIENT_ID`: ID of the application in Azure AD. This will be unique value available to users that have been granted write access to the dataset. It is found in your "Key vaults > *key_vault_name* > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) (reach out to the CDF team if you don't know the exact *key_vault_name*), where the relevant key has suffix ending "-ID"
   3. `CDF_CLUSTER`: Cluster where your CDF project is installed (here: `api`)
   4. `COGNITE_PROJECT`: Name of CDF project (here: `akerbp`)
-  5. `CLIENT SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) where the relevant key has suffix ending "-SECRET"
-- With these, we can authenticate by fetching our credentials
-```
-creds = OAuthClientCredentials(
-          token_url=AUTHORITY_URI + "/oauth2/v2.0/token",
-          client_id=CLIENT_ID,
-          scopes=SCOPES,
-          client_secret=CLIENT_SECRET,
-      )
-```
-- The client is configured as follows (where `GET_TOKEN` is the access token acquired by the client `app`)
-```
-config = ClientConfig(
-    client_name="my-client-name",
-    project=COGNITE_PROJECT,
-    credentials=Token(GET_TOKEN),
-    base_url=f"https://{CDF_CLUSTER}.cognitedata.com"
-)
-```
-- Your Cognite client is instantiated by running `client = CogniteClient(config)`
-- For an overview of read/write accesses granted for different resources and projects, see `client.iam.token.inspect()`
+  5. `CLIENT_SECRET`: A secret token required for deployement. This is found in your "Key vaults > Secrets" service at [Microsoft Azure](https://portal.azure.com/#home) where the relevant key has suffix ending "-SECRET"
+The `TENANT_ID`, `CLIENT_ID` and `CLIENT_SECRET` must be defined in a file `authentication-ids.env` in the root folder of your project.
 
-## Deployment of Cognite Function and scheduling
-This section outlines the procedure for creating a Cognite function for CDF, deployment and scheduling using Cognite's Python SDK. The jupyter file `src/run_functions.ipynb` is devoted for this purpose. Run the code cells consequtively to authenticate with CDF, instantiate your Cognite Function, deploy it and set up schedule for given input data. 
-### Structure
-The `src` folder is organized as follows.
+## Structure of project
+The source code is located in the folder `time_series_calculation`.
+
 ```markdown
 ├── src
 |   ├── README.md
@@ -109,54 +90,24 @@ The `src` folder is organized as follows.
 │   ├── utilities.py
 │   └── run_functions.ipynb
 ```
-Here we find a script `initialize.py` for authenticating with Cognite, a script `generate_cf.py` that instantiates a dedicated environment for the Cognite Function, a deployment procedure in `deploy_cognite_functions.py`, and an interactive script `run_functions.ipynb` for actual deployment of the Cognite Function. There are two main classes of the template:
+Here we find a script `prepare_timeseries.py` that takes an input time series and preprocesses it to make it ready for calculation. It also handles backfilling. A script `transform_timeseries.py` is devoted for the actual transfoormation of the time series. Utility functions are found in `utilities.py`. There are two main classes of the template:
 
-**`PrepareTimeseries`** (in `prepare_ts.py`)
+**`PrepareTimeseries`** (in `prepare_timeseries.py`)
 - Prepares one or a set of time series for transformation by retrieving and aligning input signals over a populated datetime range, handling NaNs, support for aggregations and backfilling
 - Time series are collectively retrieved, structured and backfilled by the method `get_orig_timeseries`, importing functionality from other methods in the same class
 - Transformed time series are eventually written to a devoted time series object in CDF
 
-**`RunTransformation`** (in `run_transformation.py`)
+**`TransformationTimeseries`** (in `transform_timeseries.py`)
 - Class that takes an organized dataframe of time series inputs (as prepared by `PrepareTimeseries`) and transforms the signals acording to the transformation defined in `transformation.py`
 
-The subfolder `*ds*_*func*` contains all files specific for your Cognite Function labeled `func` (where convention is that chained words in `func` are separated by dashes (-)), whose output time series is written to a dataset with abbreviated name `ds`. For example, `CoEA_avg-drainage` is a Cognite Function for calculating average drainage rate, written to the Center of Excellence - Analytics (CoEA) dataset. Each Cognite Function subfolder contains the following files:
-- **`Deploy.ipynb`**: interactive script for deploying the Cognite Function to run on a schedule
-- **`handler.py`**: main entry point containing a `handle(client, data)` function that runs a Cognite Function using a Cognite `client` and relevant input data provided in the dictionary `data`. Regardless of Cognite Function, the `handle` function reads
-```
-def handle(client: CogniteClient, data: dict) -> str:
-    calculation = data["calculation_function"]
-
-    PrepTS = PrepareTimeSeries(data["ts_input_names"], data["ts_output"], client, data)
-    PrepTS.data = PrepTS.get_orig_timeseries(eval(calculation))
-
-    ts_in = PrepTS.data["ts_input_data"]
-    ts_out = PrepTS.data["ts_output"]
-    all_inputs_empty = any([ts_in[name].empty if isinstance(ts_in[name], (pd.Series, pd.DataFrame)) else False for name in ts_in])
-
-    if not all_inputs_empty:
-        df_in = PrepTS.get_ts_df()
-        df_in = PrepTS.align_time_series(df_in)
-
-        transform_timeseries = RunTransformations(PrepTS.data, df_in)
-        df_out = transform_timeseries(eval(calculation))
-
-        assert_df(df_out, ts_in, ts_out)
-
-        df_out = transform_timeseries.store_output_ts(df_out)
-        client.time_series.data.insert_dataframe(df_out)
-
-    return df_out.to_json()
-```
-  where the ***only modification required is a programmatic setup of your calculation in the `calculation` function*** (defined in `transformation.py`), taking as input a data dictionary `data` containing all parameters for your Cognite Function and a list `ts_inputs` of time series inputs. A function `assert_df` is dedicated to check that what the `calculation` function returns is in compliance with the requirements of the template. A list of required and optional arguments to the `data` dictionary can be found in `run_functions.ipynb`.
-- **`transformation.py`**: script defining the `main_transformation` to transform the input time series. This should return a `pandas.DataFrame` where each column corresponds to one of the time series outputs. The returned dataframe should follow these requirements:
+The only programmatic modification required by the end-user is setting up your calculation in the `transformation` function in `transformation.py`, where the function should return a pandas dataframe satisfying the following:
   - must have a pandas datetime index representing the timestamp for each value
   - the columns should be set to the output names defined in the data dictionary, i.e., `data["ts_output"].keys()`
+If additional python packages are used in `transformation.py`, remember to include them in `requirements.txt`.
 
-  The script may import utility functions from other .py files located in the same folder.
-- **`requirements.txt`**: file containing Python package requirements to run the Cognite Function. This is automatically generated when creating an instance of your Cognite Function in `Deploy.ipynb`, specifying required packages for running *any* Cognite Function. If additional packages are used in `transformation.py`, the file needs to be modified to reflect the dependencies of these packages
-- **`zip_handle.zip`**: a Cognite File scoped to the dataset that our function is associated with
 
-*To preserve deployed schedules beyond current session, a client secret is required to deploy the function to CDF. This means that we need to authenticate with a Cognite client using app registration (see section Authentication with Python SDK), **not** through interactive login.*
+## The deployment process
+This section details how the template is set up to deploy Cognite Functions.
 
 ### 1. Generate Cognite Function folder structure
 The first step to deploy a Cognite Function is to create a folder structure to "host" it. A new Cognite Function `myname` is instantiated by running the function `generate_cf(cf_name, add_packages)` from the script `generate_cf.py`, where `cf_name` is the name of our Cognite Function, i.e., `cf_name=*myname*`, and `add_packages` specifies additional packages required to perform transformations defined in `transformation.py`. 
