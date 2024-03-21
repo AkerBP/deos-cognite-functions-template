@@ -9,8 +9,8 @@ if parent_path not in sys.path:
     sys.path.append(parent_path)
 
 from cognite.client._cognite_client import CogniteClient
-from time_series_backend.prepare_timeseries import PrepareTimeSeries
-from time_series_backend.transform_timeseries import TransformTimeseries
+from time_series_calculation.prepare_timeseries import PrepareTimeSeries
+from time_series_calculation.transform_timeseries import TransformTimeseries
 from transformation import transformation
 
 def handle(client: CogniteClient, data: dict) -> str:
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     import pandas as pd
     from datetime import datetime
     from dotenv import load_dotenv
-    from time_series_backend.initialize_cdf_client import initialize_cdf_client
+    from time_series_calculation.initialize_cdf_client import initialize_cdf_client
 
     cdf_env = "dev"
     client = initialize_cdf_client(cdf_env, path_to_env="../../../authentication-ids.env")

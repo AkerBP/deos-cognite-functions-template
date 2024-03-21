@@ -6,7 +6,7 @@ parent_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_path not in sys.path:
     sys.path.append(parent_path)
 
-from time_series_backend.utilities import AGG_PERIOD
+from time_series_calculation.utilities import AGG_PERIOD
 import pandas as pd
 
 def transformation(data, ts_inputs):
