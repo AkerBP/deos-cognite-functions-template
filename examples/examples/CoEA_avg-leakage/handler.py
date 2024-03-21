@@ -1,3 +1,4 @@
+
 import os
 import sys
 import pandas as pd
@@ -10,8 +11,12 @@ if parent_path not in sys.path:
 
 from cognite.client._cognite_client import CogniteClient
 from prepare_timeseries import PrepareTimeSeries
-from transform_timeseries import TransformTimeseries
-
+<<<<<<<< HEAD:examples/examples/CoEA_avg-leakage/handler.py
+from run_transformation import RunTransformations
+========
+from transform_timeseries import RunTransformations
+>>>>>>>> 17f24d61bdea89a32f0272d860b4311b8a3c6673:examples/CoEA_avg-leakage/handler.py
+from transformation import *
 
 def handle(client: CogniteClient, data: dict) -> str:
     """Main entry point for Cognite Functions fetching input time series,
@@ -38,7 +43,7 @@ def handle(client: CogniteClient, data: dict) -> str:
         df_in = PrepTS.align_time_series(df_in) # align input time series to cover same time period
 
         # STEP 2: Run transformations
-        transform_timeseries = TransformTimeseries(PrepTS.data, df_in)
+        transform_timeseries = RunTransformations(PrepTS.data, df_in)
         df_out = transform_timeseries(eval(calculation))
 
         # STEP 3: Ensure output is correctly formatted dataframe as required by template

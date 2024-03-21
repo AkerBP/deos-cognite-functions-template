@@ -20,9 +20,13 @@ from cognite.client.exceptions import CogniteAPIError
 
 logger = logging.getLogger(__name__)
 
-from cf_template.transform_timeseries import RunTransformations
-from cf_template.utilities import dataframe_to_bytes, get_external_id_from_name
-from cf_template.utilities import AGG_PERIOD
+<<<<<<<< HEAD:examples/prepare_timeseries.py
+from run_transformation import RunTransformations
+========
+from transform_timeseries import RunTransformations
+>>>>>>>> 17f24d61bdea89a32f0272d860b4311b8a3c6673:cf_template/prepare_timeseries.py
+from utilities import dataframe_to_bytes, get_external_id_from_name
+from utilities import AGG_PERIOD
 
 
 class PrepareTimeSeries:
